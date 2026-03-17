@@ -93,7 +93,8 @@ const SuiviScreen = () => {
   const byDate = groupEntriesByDate(entries);
   const todayStr = toDateString(new Date());
   const todayEntries = byDate.get(todayStr) ?? [];
-  const todayTotal = totalCalories(todayEntries, true);
+  const todayPlanned = totalCalories(todayEntries, false);
+  const todayConsumed = totalCalories(todayEntries, true);
   const weekDays = getWeekDays(weekStart);
 
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
@@ -142,11 +143,24 @@ const SuiviScreen = () => {
         activeOpacity={0.8}
       >
         <Text style={styles.todayLabel}>{formatDayLong(todayStr)}</Text>
+        <View style={styles.todayStats}>
+          <Text style={styles.todayStat}>
+            <Text style={styles.todayStatLabel}>Prévu : </Text>
+            {todayPlanned} kcal
+          </Text>
+          <Text style={styles.todayStat}>
+            <Text style={styles.todayStatLabel}>Consommé : </Text>
+            {todayConsumed} kcal
+          </Text>
+        </View>
         <Text style={styles.todayKcal}>
-          {todayTotal} / {calorieGoal} kcal
+          {todayConsumed} / {calorieGoal} kcal
+          {todayPlanned > 0 && (
+            <Text style={styles.todayPrevu}> ({todayConsumed} / {todayPlanned} prévu)</Text>
+          )}
         </Text>
         <Text style={styles.todaySub}>
-          {todayTotal >= calorieGoal ? 'Objectif atteint' : 'Consommé'}
+          {todayConsumed >= calorieGoal ? 'Objectif atteint' : todayPlanned > 0 ? 'Coche les repas consommés' : 'Ajoute des repas'}
         </Text>
       </TouchableOpacity>
 
@@ -161,7 +175,8 @@ const SuiviScreen = () => {
       </View>
       {weekDays.map(({ dateString, label }) => {
         const dayEntries = byDate.get(dateString) ?? [];
-        const total = totalCalories(dayEntries, true);
+        const planned = totalCalories(dayEntries, false);
+        const consumed = totalCalories(dayEntries, true);
         const today = isToday(dateString);
         return (
           <TouchableOpacity
@@ -171,9 +186,14 @@ const SuiviScreen = () => {
             activeOpacity={0.8}
           >
             <Text style={styles.dayRowLabel}>{label}</Text>
-            <Text style={styles.dayRowKcal}>
-              {total} / {calorieGoal} kcal
-            </Text>
+            <View style={styles.dayRowStats}>
+              <Text style={styles.dayRowKcal}>
+                {consumed} / {calorieGoal} kcal
+              </Text>
+              {planned > 0 && (
+                <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
+              )}
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -281,11 +301,29 @@ const styles = StyleSheet.create({
   todayLabel: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  todayStats: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 6,
+  },
+  todayStat: {
+    fontSize: 14,
+    color: '#333',
+  },
+  todayStatLabel: {
+    color: '#666',
+    fontWeight: '500',
   },
   todayKcal: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
+  },
+  todayPrevu: {
+    fontSize: 14,
+    fontWeight: 'normal',
+    color: '#666',
   },
   todaySub: {
     fontSize: 12,
@@ -326,9 +364,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  dayRowStats: {
+    alignItems: 'flex-end',
+  },
   dayRowKcal: {
     fontSize: 15,
-    color: '#666',
+    color: '#333',
+    fontWeight: '600',
+  },
+  dayRowPrevu: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
 });
 

@@ -102,9 +102,19 @@ const DayDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
       <Text style={styles.dayTitle}>{formatDayLong(date)}</Text>
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>Consommé</Text>
-        <Text style={styles.summaryKcal}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Prévu</Text>
+          <Text style={styles.summaryValue}>{plannedTotal} kcal</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Consommé</Text>
+          <Text style={styles.summaryValue}>{consumedTotal} kcal</Text>
+        </View>
+        <Text style={styles.summaryMain}>
           {consumedTotal} / {calorieGoal} kcal
+          {plannedTotal > 0 && (
+            <Text style={styles.summaryPrevu}> — {consumedTotal} / {plannedTotal} prévu</Text>
+          )}
         </Text>
         <View style={styles.progressBar}>
           <View
@@ -201,15 +211,31 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 24,
   },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   summaryLabel: {
     fontSize: 14,
     color: '#1565c0',
-    marginBottom: 4,
   },
-  summaryKcal: {
-    fontSize: 22,
+  summaryValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0d47a1',
+  },
+  summaryMain: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#0d47a1',
+    marginTop: 8,
+  },
+  summaryPrevu: {
+    fontSize: 14,
+    fontWeight: 'normal',
+    color: '#666',
   },
   progressBar: {
     height: 8,
