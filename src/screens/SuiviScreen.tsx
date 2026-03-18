@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Calendar } from 'react-native-calendars';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
@@ -36,6 +36,42 @@ type Nav = NativeStackNavigationProp<SuiviStackParamList, 'SuiviMain'>;
 
 const DEFAULT_CALORIE_GOAL = 2000;
 type ViewMode = 'week' | 'month';
+
+// Locale FR pour react-native-calendars
+LocaleConfig.locales.fr = {
+  monthNames: [
+    'Janvier',
+    'Février',
+    'Mars',
+    'Avril',
+    'Mai',
+    'Juin',
+    'Juillet',
+    'Août',
+    'Septembre',
+    'Octobre',
+    'Novembre',
+    'Décembre',
+  ],
+  monthNamesShort: [
+    'Jan',
+    'Fév',
+    'Mar',
+    'Avr',
+    'Mai',
+    'Juin',
+    'Juil',
+    'Aoû',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Déc',
+  ],
+  dayNames: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'],
+  dayNamesShort: ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'],
+  today: "Aujourd'hui",
+};
+LocaleConfig.defaultLocale = 'fr';
 
 const SuiviScreen = () => {
   const navigation = useNavigation<Nav>();
