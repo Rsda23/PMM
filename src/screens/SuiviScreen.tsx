@@ -247,11 +247,18 @@ const SuiviScreen = () => {
 
       <Text style={styles.sectionTitle}>Aujourd'hui</Text>
       <TouchableOpacity
-        style={styles.todayCard}
+        style={[styles.todayCard, todayConsumed >= calorieGoal && styles.todayCardAchieved]}
         onPress={() => navigation.navigate('DayDetail', { date: todayStr })}
         activeOpacity={0.8}
       >
-        <Text style={styles.todayLabel}>{formatDayLong(todayStr)}</Text>
+        <View style={styles.todayHeaderRow}>
+          <Text style={styles.todayLabel}>{formatDayLong(todayStr)}</Text>
+          {todayConsumed >= calorieGoal && (
+            <View style={styles.achievedBadge}>
+              <Text style={styles.achievedBadgeText}>Objectif atteint</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.todayStats}>
           <Text style={styles.todayStat}>
             <Text style={styles.todayStatLabel}>Prévu : </Text>
@@ -484,10 +491,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
+  todayCardAchieved: {
+    backgroundColor: '#e8f5e9',
+    borderColor: '#a5d6a7',
+  },
+  todayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 10,
+  },
   todayLabel: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 8,
+    flex: 1,
+  },
+  achievedBadge: {
+    backgroundColor: '#43a047',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  achievedBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   todayStats: {
     flexDirection: 'row',
