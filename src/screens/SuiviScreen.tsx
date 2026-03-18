@@ -348,6 +348,9 @@ const SuiviScreen = () => {
             const planned = totalCalories(dayEntries, false);
             const consumed = totalCalories(dayEntries, true);
             const today = isToday(dateString);
+            const ratio = calorieGoal > 0 ? consumed / calorieGoal : 0;
+            const pct = Math.max(0, Math.min(1, ratio));
+            const over = ratio >= 1;
             return (
               <TouchableOpacity
                 key={dateString}
@@ -355,7 +358,18 @@ const SuiviScreen = () => {
                 onPress={() => navigation.navigate('DayDetail', { date: dateString })}
                 activeOpacity={0.8}
               >
-                <Text style={styles.dayRowLabel}>{label}</Text>
+                <View style={styles.dayRowLeft}>
+                  <Text style={styles.dayRowLabel}>{label}</Text>
+                  <View style={styles.dayProgressTrack}>
+                    <View
+                      style={[
+                        styles.dayProgressFill,
+                        over && styles.dayProgressFillOver,
+                        { width: `${pct * 100}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
                 <View style={styles.dayRowStats}>
                   <Text style={styles.dayRowKcal}>
                     {consumed} / {calorieGoal} kcal
@@ -584,6 +598,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
   },
+  dayRowLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
   dayRowToday: {
     borderColor: '#1565c0',
     backgroundColor: '#e3f2fd',
@@ -591,6 +609,21 @@ const styles = StyleSheet.create({
   dayRowLabel: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  dayProgressTrack: {
+    height: 6,
+    backgroundColor: '#eee',
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  dayProgressFill: {
+    height: '100%',
+    backgroundColor: '#1565c0',
+    borderRadius: 999,
+  },
+  dayProgressFillOver: {
+    backgroundColor: '#c62828',
   },
   dayRowStats: {
     alignItems: 'flex-end',
