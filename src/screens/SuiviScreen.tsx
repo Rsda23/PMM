@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,12 @@ import type { SuiviStackParamList } from '../navigation/SuiviStack';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
 import {
   getMealPlansForDateRange,
+  getMealPlansForDay,
   groupEntriesByDate,
+  MEAL_TYPE_LABELS,
   totalCalories,
   type MealPlanEntry,
+  type MealType,
 } from '../services/api/mealPlansApi';
 import {
   getWeekStart,
@@ -40,6 +43,7 @@ const SuiviScreen = () => {
   const [loading, setLoading] = useState(true);
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   const [entries, setEntries] = useState<MealPlanEntry[]>([]);
+  const [todayEntries, setTodayEntries] = useState<MealPlanEntry[]>([]);
 
   const loadProfile = useCallback(async () => {
     const profile = await getUserProfile();
@@ -58,22 +62,32 @@ const SuiviScreen = () => {
     setEntries(data);
   }, [weekStart]);
 
+  const loadToday = useCallback(async () => {
+    const today = toDateString(new Date());
+    const data = await getMealPlansForDay(today);
+    setTodayEntries(data);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
         setLoading(true);
         await loadProfile();
-        if (!cancelled) await loadWeek();
+        if (!cancelled) await Promise.all([loadWeek(), loadToday()]);
         if (!cancelled) setLoading(false);
       })();
       return () => { cancelled = true; };
-    }, [loadProfile, loadWeek]),
+    }, [loadProfile, loadWeek, loadToday]),
   );
 
   useEffect(() => {
     loadWeek();
   }, [weekStart]);
+
+  useEffect(() => {
+    loadToday();
+  }, []);
 
   const saveGoal = async () => {
     const n = parseInt(goalInput, 10);
@@ -92,10 +106,30 @@ const SuiviScreen = () => {
 
   const byDate = groupEntriesByDate(entries);
   const todayStr = toDateString(new Date());
-  const todayEntries = byDate.get(todayStr) ?? [];
   const todayPlanned = totalCalories(todayEntries, false);
   const todayConsumed = totalCalories(todayEntries, true);
   const weekDays = getWeekDays(weekStart);
+
+  const todayPlannedPreview = useMemo(() => {
+    const planned = todayEntries.filter((e) => e.status === 'planned' || e.status === 'completed');
+    if (planned.length === 0) return [];
+    const byType = new Map<MealType, string[]>();
+    for (const e of planned) {
+      const list = byType.get(e.mealType) ?? [];
+      list.push(e.recipeTitle);
+      byType.set(e.mealType, list);
+    }
+    const order: MealType[] = ['breakfast', 'lunch', 'snack', 'dinner'];
+    return order
+      .map((t) => {
+        const items = byType.get(t);
+        if (!items || items.length === 0) return null;
+        const unique = Array.from(new Set(items)).slice(0, 2);
+        const suffix = items.length > 2 ? ` +${items.length - 2}` : '';
+        return `${MEAL_TYPE_LABELS[t]} : ${unique.join(' • ')}${suffix}`;
+      })
+      .filter((x): x is string => Boolean(x));
+  }, [todayEntries]);
 
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
   const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
@@ -159,9 +193,15 @@ const SuiviScreen = () => {
             <Text style={styles.todayPrevu}> ({todayConsumed} / {todayPlanned} prévu)</Text>
           )}
         </Text>
-        <Text style={styles.todaySub}>
-          {todayConsumed >= calorieGoal ? 'Objectif atteint' : todayPlanned > 0 ? 'Coche les repas consommés' : 'Ajoute des repas'}
-        </Text>
+        {todayPlannedPreview.length > 0 && (
+          <View style={styles.todayPreview}>
+            {todayPlannedPreview.map((line) => (
+              <Text key={line} style={styles.todayPreviewLine} numberOfLines={1}>
+                {line}
+              </Text>
+            ))}
+          </View>
+        )}
       </TouchableOpacity>
 
       <View style={styles.semaineRow}>
@@ -325,10 +365,13 @@ const styles = StyleSheet.create({
     fontWeight: 'normal',
     color: '#666',
   },
-  todaySub: {
-    fontSize: 12,
+  todayPreview: {
+    marginTop: 10,
+    gap: 4,
+  },
+  todayPreviewLine: {
+    fontSize: 13,
     color: '#666',
-    marginTop: 4,
   },
   weekHeader: {
     flexDirection: 'row',
