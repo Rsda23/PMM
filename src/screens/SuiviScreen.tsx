@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
@@ -34,6 +35,7 @@ import {
 type Nav = NativeStackNavigationProp<SuiviStackParamList, 'SuiviMain'>;
 
 const DEFAULT_CALORIE_GOAL = 2000;
+type ViewMode = 'week' | 'month';
 
 const SuiviScreen = () => {
   const navigation = useNavigation<Nav>();
@@ -41,9 +43,15 @@ const SuiviScreen = () => {
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   const [entries, setEntries] = useState<MealPlanEntry[]>([]);
   const [todayEntries, setTodayEntries] = useState<MealPlanEntry[]>([]);
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [monthEntries, setMonthEntries] = useState<MealPlanEntry[]>([]);
 
   const loadProfile = useCallback(async () => {
     const profile = await getUserProfile();
@@ -68,17 +76,24 @@ const SuiviScreen = () => {
     setTodayEntries(data);
   }, []);
 
+  const loadMonth = useCallback(async () => {
+    const start = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
+    const end = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
+    const data = await getMealPlansForDateRange(start, end);
+    setMonthEntries(data);
+  }, [monthCursor]);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
         setLoading(true);
         await loadProfile();
-        if (!cancelled) await Promise.all([loadWeek(), loadToday()]);
+        if (!cancelled) await Promise.all([loadWeek(), loadToday(), loadMonth()]);
         if (!cancelled) setLoading(false);
       })();
       return () => { cancelled = true; };
-    }, [loadProfile, loadWeek, loadToday]),
+    }, [loadProfile, loadWeek, loadToday, loadMonth]),
   );
 
   useEffect(() => {
@@ -88,6 +103,10 @@ const SuiviScreen = () => {
   useEffect(() => {
     loadToday();
   }, []);
+
+  useEffect(() => {
+    loadMonth();
+  }, [monthCursor]);
 
   const saveGoal = async () => {
     const n = parseInt(goalInput, 10);
@@ -133,6 +152,26 @@ const SuiviScreen = () => {
 
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
   const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
+
+  const markedDates = useMemo(() => {
+    const map: Record<string, { dots?: { key: string; color: string }[]; selected?: boolean; selectedColor?: string }> = {};
+    const byDateMonth = groupEntriesByDate(monthEntries);
+    for (const [dateStr, list] of byDateMonth.entries()) {
+      const hasPlanned = list.some((e) => e.status === 'planned');
+      const hasCompleted = list.some((e) => e.status === 'completed');
+      const dots: { key: string; color: string }[] = [];
+      if (hasPlanned) dots.push({ key: 'planned', color: '#1565c0' });
+      if (hasCompleted) dots.push({ key: 'completed', color: '#43a047' });
+      map[dateStr] = { dots };
+    }
+    // Met en évidence aujourd'hui
+    map[todayStr] = {
+      ...(map[todayStr] ?? {}),
+      selected: true,
+      selectedColor: '#e3f2fd',
+    };
+    return map;
+  }, [monthEntries, todayStr]);
 
   if (loading) {
     return (
@@ -204,47 +243,104 @@ const SuiviScreen = () => {
         )}
       </TouchableOpacity>
 
-      <View style={styles.semaineRow}>
-        <Text style={styles.sectionTitle}>Semaine</Text>
+      <View style={styles.tabsRow}>
         <TouchableOpacity
-          style={styles.addButtonInline}
-          onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
+          style={[styles.tab, viewMode === 'week' && styles.tabActive]}
+          onPress={() => setViewMode('week')}
+          activeOpacity={0.8}
         >
-          <Text style={styles.addButtonInlineText}>+ Ajouter un repas</Text>
+          <Text style={[styles.tabText, viewMode === 'week' && styles.tabTextActive]}>
+            Semaine
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, viewMode === 'month' && styles.tabActive]}
+          onPress={() => setViewMode('month')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabText, viewMode === 'month' && styles.tabTextActive]}>
+            Mois
+          </Text>
         </TouchableOpacity>
       </View>
-      {weekDays.map(({ dateString, label }) => {
-        const dayEntries = byDate.get(dateString) ?? [];
-        const planned = totalCalories(dayEntries, false);
-        const consumed = totalCalories(dayEntries, true);
-        const today = isToday(dateString);
-        return (
-          <TouchableOpacity
-            key={dateString}
-            style={[styles.dayRow, today && styles.dayRowToday]}
-            onPress={() => navigation.navigate('DayDetail', { date: dateString })}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.dayRowLabel}>{label}</Text>
-            <View style={styles.dayRowStats}>
-              <Text style={styles.dayRowKcal}>
-                {consumed} / {calorieGoal} kcal
-              </Text>
-              {planned > 0 && (
-                <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
-              )}
+
+      {viewMode === 'month' ? (
+        <>
+          <View style={styles.calendarCard}>
+            <Calendar
+              current={toDateString(monthCursor)}
+              firstDay={1}
+              hideExtraDays
+              enableSwipeMonths
+              markingType="multi-dot"
+              markedDates={markedDates as any}
+              onDayPress={(day) => navigation.navigate('DayDetail', { date: day.dateString })}
+              onMonthChange={(m) => setMonthCursor(new Date(m.year, m.month - 1, 1))}
+              theme={{
+                todayTextColor: '#1565c0',
+                selectedDayTextColor: '#1565c0',
+                arrowColor: '#1565c0',
+                textSectionTitleColor: '#666',
+                monthTextColor: '#333',
+              }}
+            />
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#1565c0' }]} />
+                <Text style={styles.legendText}>Prévu</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#43a047' }]} />
+                <Text style={styles.legendText}>Consommé</Text>
+              </View>
             </View>
-          </TouchableOpacity>
-        );
-      })}
-      <View style={styles.weekHeader}>
-        <TouchableOpacity onPress={goPrevWeek} style={styles.weekNav}>
-          <Text style={styles.weekNavText}>← Semaine précédente</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={goNextWeek} style={styles.weekNav}>
-          <Text style={styles.weekNavText}>Semaine suivante →</Text>
-        </TouchableOpacity>
-      </View>
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.semaineRow}>
+            <Text style={styles.sectionTitle}>Semaine</Text>
+            <TouchableOpacity
+              style={styles.addButtonInline}
+              onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
+            >
+              <Text style={styles.addButtonInlineText}>+ Ajouter un repas</Text>
+            </TouchableOpacity>
+          </View>
+          {weekDays.map(({ dateString, label }) => {
+            const dayEntries = byDate.get(dateString) ?? [];
+            const planned = totalCalories(dayEntries, false);
+            const consumed = totalCalories(dayEntries, true);
+            const today = isToday(dateString);
+            return (
+              <TouchableOpacity
+                key={dateString}
+                style={[styles.dayRow, today && styles.dayRowToday]}
+                onPress={() => navigation.navigate('DayDetail', { date: dateString })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dayRowLabel}>{label}</Text>
+                <View style={styles.dayRowStats}>
+                  <Text style={styles.dayRowKcal}>
+                    {consumed} / {calorieGoal} kcal
+                  </Text>
+                  {planned > 0 && (
+                    <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+          <View style={styles.weekHeader}>
+            <TouchableOpacity onPress={goPrevWeek} style={styles.weekNav}>
+              <Text style={styles.weekNavText}>← Semaine précédente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={goNextWeek} style={styles.weekNav}>
+              <Text style={styles.weekNavText}>Semaine suivante →</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 };
@@ -371,6 +467,59 @@ const styles = StyleSheet.create({
   },
   todayPreviewLine: {
     fontSize: 13,
+    color: '#666',
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f2f2f2',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e6e6e6',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#1565c0',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  calendarCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    padding: 10,
+    marginBottom: 20,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 10,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    fontSize: 12,
     color: '#666',
   },
   weekHeader: {
