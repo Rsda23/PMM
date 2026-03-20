@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { PanGestureHandler } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
@@ -189,6 +190,13 @@ const SuiviScreen = () => {
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
   const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
 
+  const handleWeekSwipeEnded = (event: any) => {
+    const dx = event?.nativeEvent?.translationX ?? 0;
+    const threshold = 70;
+    if (dx > threshold) goPrevWeek();
+    else if (dx < -threshold) goNextWeek();
+  };
+
   const markedDates = useMemo(() => {
     const map: Record<string, { dots?: { key: string; color: string }[]; selected?: boolean; selectedColor?: string }> = {};
     const byDateMonth = groupEntriesByDate(monthEntries);
@@ -341,61 +349,69 @@ const SuiviScreen = () => {
         </>
       ) : (
         <>
-          <View style={styles.semaineRow}>
-            <Text style={styles.sectionTitle}>Semaine</Text>
-            <TouchableOpacity
-              style={styles.addButtonInline}
-              onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
-            >
-              <Text style={styles.addButtonInlineText}>+ Ajouter un repas</Text>
-            </TouchableOpacity>
-          </View>
-          {weekDays.map(({ dateString, label }) => {
-            const dayEntries = byDate.get(dateString) ?? [];
-            const planned = totalCalories(dayEntries, false);
-            const consumed = totalCalories(dayEntries, true);
-            const today = isToday(dateString);
-            const ratio = calorieGoal > 0 ? consumed / calorieGoal : 0;
-            const pct = Math.max(0, Math.min(1, ratio));
-            const over = ratio >= 1;
-            return (
-              <TouchableOpacity
-                key={dateString}
-                style={[styles.dayRow, today && styles.dayRowToday]}
-                onPress={() => navigation.navigate('DayDetail', { date: dateString })}
-                activeOpacity={0.8}
-              >
-                <View style={styles.dayRowLeft}>
-                  <Text style={styles.dayRowLabel}>{label}</Text>
-                  <View style={styles.dayProgressTrack}>
-                    <View
-                      style={[
-                        styles.dayProgressFill,
-                        over && styles.dayProgressFillOver,
-                        { width: `${pct * 100}%` },
-                      ]}
-                    />
-                  </View>
-                </View>
-                <View style={styles.dayRowStats}>
-                  <Text style={styles.dayRowKcal}>
-                    {consumed} / {calorieGoal} kcal
-                  </Text>
-                  {planned > 0 && (
-                    <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-          <View style={styles.weekHeader}>
-            <TouchableOpacity onPress={goPrevWeek} style={styles.weekNav}>
-              <Text style={styles.weekNavText}>← Semaine précédente</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={goNextWeek} style={styles.weekNav}>
-              <Text style={styles.weekNavText}>Semaine suivante →</Text>
-            </TouchableOpacity>
-          </View>
+          <PanGestureHandler
+            onEnded={handleWeekSwipeEnded}
+            activeOffsetX={[-25, 25]}
+            failOffsetY={[-15, 15]}
+          >
+            <View>
+              <View style={styles.semaineRow}>
+                <Text style={styles.sectionTitle}>Semaine</Text>
+                <TouchableOpacity
+                  style={styles.addButtonInline}
+                  onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
+                >
+                  <Text style={styles.addButtonInlineText}>+ Ajouter un repas</Text>
+                </TouchableOpacity>
+              </View>
+              {weekDays.map(({ dateString, label }) => {
+                const dayEntries = byDate.get(dateString) ?? [];
+                const planned = totalCalories(dayEntries, false);
+                const consumed = totalCalories(dayEntries, true);
+                const today = isToday(dateString);
+                const ratio = calorieGoal > 0 ? consumed / calorieGoal : 0;
+                const pct = Math.max(0, Math.min(1, ratio));
+                const over = ratio >= 1;
+                return (
+                  <TouchableOpacity
+                    key={dateString}
+                    style={[styles.dayRow, today && styles.dayRowToday]}
+                    onPress={() => navigation.navigate('DayDetail', { date: dateString })}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.dayRowLeft}>
+                      <Text style={styles.dayRowLabel}>{label}</Text>
+                      <View style={styles.dayProgressTrack}>
+                        <View
+                          style={[
+                            styles.dayProgressFill,
+                            over && styles.dayProgressFillOver,
+                            { width: `${pct * 100}%` },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.dayRowStats}>
+                      <Text style={styles.dayRowKcal}>
+                        {consumed} / {calorieGoal} kcal
+                      </Text>
+                      {planned > 0 && (
+                        <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              <View style={styles.weekHeader}>
+                <TouchableOpacity onPress={goPrevWeek} style={styles.weekNav}>
+                  <Text style={styles.weekNavText}>← Semaine précédente</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={goNextWeek} style={styles.weekNav}>
+                  <Text style={styles.weekNavText}>Semaine suivante →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </PanGestureHandler>
         </>
       )}
     </ScrollView>
