@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   View,
   TextInput,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import RecipeCard from '../components/RecipeCard';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
@@ -40,6 +40,8 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 const RecipesScreen = () => {
   const navigation = useNavigation<RecipesScreenNavigationProp>();
+  const route = useRoute<RouteProp<RecipesStackParamList, 'Recipes'>>();
+  const scrollRef = useRef<ScrollView>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
@@ -53,6 +55,11 @@ const RecipesScreen = () => {
 
   useEffect(() => { loadRecipes(); }, []);
   useFocusEffect(React.useCallback(() => { loadRecipes(); }, []));
+  useEffect(() => {
+    if (!route.params?.reTapToken) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    loadRecipes();
+  }, [route.params?.reTapToken]);
 
   const searchFiltered = useMemo(() => {
     if (!searchQuery.trim()) return recipes;
@@ -93,7 +100,7 @@ const RecipesScreen = () => {
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
       <TextInput
         style={styles.searchBar}
         placeholder="Rechercher une recette ou un tag..."
