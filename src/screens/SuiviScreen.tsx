@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { PanGestureHandler } from 'react-native-gesture-handler';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
@@ -77,7 +78,7 @@ LocaleConfig.defaultLocale = 'fr';
 const SuiviScreen = () => {
   const navigation = useNavigation<Nav>();
   const [calorieGoal, setCalorieGoal] = useState<number>(DEFAULT_CALORIE_GOAL);
-  const [editingGoal, setEditingGoal] = useState(false);
+  const [editingGoalFromTodayCard, setEditingGoalFromTodayCard] = useState(false);
   const [goalInput, setGoalInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -145,19 +146,25 @@ const SuiviScreen = () => {
     loadMonth();
   }, [monthCursor]);
 
-  const saveGoal = async () => {
+  const persistGoal = async (): Promise<boolean> => {
     const n = parseInt(goalInput, 10);
     if (isNaN(n) || n < 500 || n > 10000) {
       Alert.alert('Objectif invalide', 'Saisis un nombre entre 500 et 10000 kcal.');
-      return;
+      return false;
     }
-    setEditingGoal(false);
     setCalorieGoal(n);
     try {
       await updateUserProfile({ calorieGoal: n });
     } catch (e) {
       Alert.alert('Erreur', 'Impossible d’enregistrer l’objectif.');
+      return false;
     }
+    return true;
+  };
+
+  const saveGoalFromTodayCard = async () => {
+    const ok = await persistGoal();
+    if (ok) setEditingGoalFromTodayCard(false);
   };
 
   const byDate = groupEntriesByDate(entries);
@@ -229,30 +236,6 @@ const SuiviScreen = () => {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Suivi nutritionnel</Text>
 
-      <View style={styles.goalCard}>
-        <Text style={styles.goalLabel}>Objectif calorique journalier</Text>
-        {editingGoal ? (
-          <View style={styles.goalRow}>
-            <TextInput
-              style={styles.goalInput}
-              value={goalInput}
-              onChangeText={setGoalInput}
-              keyboardType="number-pad"
-              placeholder="ex: 2500"
-              placeholderTextColor="#999"
-            />
-            <TouchableOpacity style={styles.goalButton} onPress={saveGoal}>
-              <Text style={styles.goalButtonText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity onPress={() => setEditingGoal(true)}>
-            <Text style={styles.goalValue}>{calorieGoal} kcal / jour</Text>
-            <Text style={styles.goalHint}>Appuie pour modifier</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       <Text style={styles.sectionTitle}>Aujourd'hui</Text>
       <TouchableOpacity
         style={[styles.todayCard, todayConsumed >= calorieGoal && styles.todayCardAchieved]}
@@ -277,12 +260,49 @@ const SuiviScreen = () => {
             {todayConsumed} kcal
           </Text>
         </View>
-        <Text style={styles.todayKcal}>
-          {todayConsumed} / {calorieGoal} kcal
-          {todayPlanned > 0 && (
-            <Text style={styles.todayPrevu}> ({todayConsumed} / {todayPlanned} prévu)</Text>
-          )}
-        </Text>
+        <View style={styles.todayKcalRow}>
+          <Text style={styles.todayKcal}>
+            {todayConsumed} / {calorieGoal} kcal
+            {todayPlanned > 0 && (
+              <Text style={styles.todayPrevu}> ({todayConsumed} / {todayPlanned} prévu)</Text>
+            )}
+          </Text>
+          <TouchableOpacity
+            style={styles.editGoalIconButton}
+            onPress={() => {
+              if (editingGoalFromTodayCard) {
+                setEditingGoalFromTodayCard(false);
+              } else {
+                setGoalInput(String(calorieGoal));
+                setEditingGoalFromTodayCard(true);
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="pencil" size={16} color="#1565c0" />
+          </TouchableOpacity>
+        </View>
+        {editingGoalFromTodayCard && (
+          <View style={styles.todayGoalEditRow}>
+            <TextInput
+              style={styles.todayGoalInput}
+              value={goalInput}
+              onChangeText={setGoalInput}
+              keyboardType="number-pad"
+              placeholder="Objectif kcal"
+              placeholderTextColor="#999"
+            />
+            <TouchableOpacity style={styles.todayGoalAction} onPress={saveGoalFromTodayCard}>
+              <Ionicons name="checkmark" size={18} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.todayGoalAction, styles.todayGoalActionCancel]}
+              onPress={() => setEditingGoalFromTodayCard(false)}
+            >
+              <Ionicons name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
         {todayPlannedPreview.length > 0 && (
           <View style={styles.todayPreview}>
             {todayPlannedPreview.map((line) => (
@@ -433,51 +453,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  goalCard: {
-    backgroundColor: '#e3f2fd',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  goalLabel: {
-    fontSize: 14,
-    color: '#1565c0',
-    marginBottom: 6,
-  },
-  goalValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#0d47a1',
-  },
-  goalHint: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  goalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  goalInput: {
-    borderWidth: 1,
-    borderColor: '#1565c0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 18,
-    minWidth: 100,
-  },
-  goalButton: {
-    backgroundColor: '#1565c0',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  goalButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
   semaineRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -551,10 +526,53 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  todayKcalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  editGoalIconButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#bbdefb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
   todayPrevu: {
     fontSize: 14,
     fontWeight: 'normal',
     color: '#666',
+  },
+  todayGoalEditRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  todayGoalInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#90caf9',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    backgroundColor: '#fff',
+  },
+  todayGoalAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#2e7d32',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayGoalActionCancel: {
+    backgroundColor: '#9e9e9e',
   },
   todayPreview: {
     marginTop: 10,
