@@ -15,7 +15,7 @@ import { logout } from '../services/firebase/auth';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
 import RecipeCard from '../components/RecipeCard';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../components/Navbar';
 
@@ -41,12 +41,14 @@ const ProfileScreen = () => {
   const email = user?.email ?? '';
   const initial = email ? email[0].toUpperCase() : '?';
 
-  useEffect(() => {
-    getUserProfile().then((p) => {
-      if (p?.calorieGoal) setCalorieGoal(String(p.calorieGoal));
-      else setCalorieGoal('2000');
-    });
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      getUserProfile().then((p) => {
+        if (p?.calorieGoal) setCalorieGoal(String(p.calorieGoal));
+        else setCalorieGoal('2000');
+      });
+    }, []),
+  );
 
   const handleLogout = async () => {
     setLoggingOut(true);
