@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { logout } from '../services/firebase/auth';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
 import RecipeCard from '../components/RecipeCard';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../components/Navbar';
 
@@ -32,6 +32,8 @@ const ProfileScreen = () => {
   const setObjective = useUserStore((state) => state.setObjective);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const route = useRoute<RouteProp<RootTabParamList, 'Profil'>>();
+  const scrollRef = useRef<ScrollView>(null);
   const [favoriteRecipes, setFavoriteRecipes] = useState<Recipe[]>([]);
   const [loggingOut, setLoggingOut] = useState(false);
   const [calorieGoal, setCalorieGoal] = useState<string>('');
@@ -85,8 +87,17 @@ const ProfileScreen = () => {
     loadFavorites();
   }, [favoriteRecipeIds]);
 
+  useEffect(() => {
+    if (!route.params?.reTapToken) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    getUserProfile().then((p) => {
+      if (p?.calorieGoal) setCalorieGoal(String(p.calorieGoal));
+      else setCalorieGoal('2000');
+    });
+  }, [route.params?.reTapToken]);
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
       {/* ── Avatar + infos ── */}
       <View style={styles.header}>
         <View style={styles.avatar}>

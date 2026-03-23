@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { PanGestureHandler } from 'react-native-gesture-handler';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
@@ -77,6 +78,8 @@ LocaleConfig.defaultLocale = 'fr';
 
 const SuiviScreen = () => {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<SuiviStackParamList, 'SuiviMain'>>();
+  const scrollRef = React.useRef<ScrollView>(null);
   const [calorieGoal, setCalorieGoal] = useState<number>(DEFAULT_CALORIE_GOAL);
   const [editingGoalFromTodayCard, setEditingGoalFromTodayCard] = useState(false);
   const [goalInput, setGoalInput] = useState('');
@@ -90,6 +93,7 @@ const SuiviScreen = () => {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [monthEntries, setMonthEntries] = useState<MealPlanEntry[]>([]);
+  const hasLoadedOnceRef = useRef(false);
 
   const loadProfile = useCallback(async () => {
     const profile = await getUserProfile();
@@ -125,10 +129,18 @@ const SuiviScreen = () => {
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        setLoading(true);
-        await loadProfile();
-        if (!cancelled) await Promise.all([loadWeek(), loadToday(), loadMonth()]);
-        if (!cancelled) setLoading(false);
+        // Affiche le loader uniquement au tout premier affichage.
+        // Ensuite, les refresh (focus/re-tap) restent silencieux pour une UX fluide.
+        if (!hasLoadedOnceRef.current) {
+          setLoading(true);
+          await loadProfile();
+          if (!cancelled) await Promise.all([loadWeek(), loadToday(), loadMonth()]);
+          if (!cancelled) setLoading(false);
+          hasLoadedOnceRef.current = true;
+          return;
+        }
+
+        await Promise.all([loadProfile(), loadWeek(), loadToday(), loadMonth()]);
       })();
       return () => { cancelled = true; };
     }, [loadProfile, loadWeek, loadToday, loadMonth]),
@@ -145,6 +157,12 @@ const SuiviScreen = () => {
   useEffect(() => {
     loadMonth();
   }, [monthCursor]);
+
+  useEffect(() => {
+    if (!route.params?.reTapToken) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    Promise.all([loadProfile(), loadWeek(), loadToday(), loadMonth()]);
+  }, [route.params?.reTapToken, loadProfile, loadWeek, loadToday, loadMonth]);
 
   const persistGoal = async (): Promise<boolean> => {
     const n = parseInt(goalInput, 10);
@@ -253,7 +271,7 @@ const SuiviScreen = () => {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Suivi nutritionnel</Text>
 
       <View style={styles.todayHeaderTopRow}>

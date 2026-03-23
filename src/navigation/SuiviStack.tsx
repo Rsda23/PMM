@@ -5,7 +5,7 @@ import DayDetailScreen from '../screens/DayDetailScreen';
 import AddMealScreen from '../screens/AddMealScreen';
 
 export type SuiviStackParamList = {
-  SuiviMain: undefined;
+  SuiviMain: { reTapToken?: number } | undefined;
   DayDetail: { date: string }; // "YYYY-MM-DD"
   AddMeal: { date: string; mealType?: import('../services/api/mealPlansApi').MealType };
 };
