@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { User } from 'firebase/auth';
 import { subscribeToAuthState } from './src/services/firebase/auth';
 import Navbar from './src/components/Navbar';
@@ -41,12 +42,14 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top']}>
-        <StatusBar style="dark" />
-        <NavigationContainer>
-          {user ? <Navbar /> : <AuthStack />}
-        </NavigationContainer>
-      </SafeAreaView>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top']}>
+          <StatusBar style="dark" />
+          <NavigationContainer>
+            {user ? <Navbar /> : <AuthStack />}
+          </NavigationContainer>
+        </SafeAreaView>
+      </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }

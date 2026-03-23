@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/firebaseConfig';
+import { toDateString } from '../../utils/dateUtils';
 
 export type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner';
 export type MealPlanStatus = 'planned' | 'completed';
@@ -41,10 +42,6 @@ function getWeekBounds(date: Date): { start: Date; end: Date } {
   end.setDate(start.getDate() + 6);
   end.setHours(23, 59, 59, 999);
   return { start, end };
-}
-
-function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 function parseEntry(docSnap: { id: string; data: () => Record<string, unknown> }): MealPlanEntry {
