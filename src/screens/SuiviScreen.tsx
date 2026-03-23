@@ -197,6 +197,26 @@ const SuiviScreen = () => {
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
   const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
 
+  const weekLabel = useMemo(() => {
+    const start = new Date(weekStart);
+    const end = addDays(weekStart, 6);
+
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startMonth = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(start);
+    const endMonth = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(end);
+    const startYear = start.getFullYear();
+    const endYear = end.getFullYear();
+
+    if (startMonth === endMonth && startYear === endYear) {
+      return `${startDay}\u2013${endDay} ${startMonth} ${startYear}`;
+    }
+    if (startYear === endYear) {
+      return `${startDay} ${startMonth}\u2013${endDay} ${endMonth} ${startYear}`;
+    }
+    return `${startDay} ${startMonth} ${startYear}\u2013${endDay} ${endMonth} ${endYear}`;
+  }, [weekStart]);
+
   const handleWeekSwipeEnded = (event: any) => {
     const dx = event?.nativeEvent?.translationX ?? 0;
     const threshold = 70;
@@ -236,7 +256,15 @@ const SuiviScreen = () => {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Suivi nutritionnel</Text>
 
-      <Text style={styles.sectionTitle}>Aujourd'hui</Text>
+      <View style={styles.todayHeaderTopRow}>
+        <Text style={styles.sectionTitle}>Aujourd'hui</Text>
+        <TouchableOpacity
+          style={styles.addMealInlineButton}
+          onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
+        >
+          <Text style={styles.addMealInlineButtonText}>+ Ajouter un repas</Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity
         style={[styles.todayCard, todayConsumed >= calorieGoal && styles.todayCardAchieved]}
         onPress={() => navigation.navigate('DayDetail', { date: todayStr })}
@@ -369,21 +397,22 @@ const SuiviScreen = () => {
         </>
       ) : (
         <>
+          <View style={styles.weekNavHeader}>
+            <TouchableOpacity onPress={goPrevWeek} style={styles.weekNavIconButton} activeOpacity={0.8}>
+              <Ionicons name="chevron-back" size={18} color="#1565c0" />
+            </TouchableOpacity>
+            <Text style={styles.weekNavLabel}>{weekLabel}</Text>
+            <TouchableOpacity onPress={goNextWeek} style={styles.weekNavIconButton} activeOpacity={0.8}>
+              <Ionicons name="chevron-forward" size={18} color="#1565c0" />
+            </TouchableOpacity>
+          </View>
+
           <PanGestureHandler
             onEnded={handleWeekSwipeEnded}
             activeOffsetX={[-25, 25]}
             failOffsetY={[-15, 15]}
           >
             <View>
-              <View style={styles.semaineRow}>
-                <Text style={styles.sectionTitle}>Semaine</Text>
-                <TouchableOpacity
-                  style={styles.addButtonInline}
-                  onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
-                >
-                  <Text style={styles.addButtonInlineText}>+ Ajouter un repas</Text>
-                </TouchableOpacity>
-              </View>
               {weekDays.map(({ dateString, label }) => {
                 const dayEntries = byDate.get(dateString) ?? [];
                 const planned = totalCalories(dayEntries, false);
@@ -422,14 +451,6 @@ const SuiviScreen = () => {
                   </TouchableOpacity>
                 );
               })}
-              <View style={styles.weekHeader}>
-                <TouchableOpacity onPress={goPrevWeek} style={styles.weekNav}>
-                  <Text style={styles.weekNavText}>← Semaine précédente</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={goNextWeek} style={styles.weekNav}>
-                  <Text style={styles.weekNavText}>Semaine suivante →</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </PanGestureHandler>
         </>
@@ -441,7 +462,7 @@ const SuiviScreen = () => {
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 24,
   },
   centered: {
     flex: 1,
@@ -449,9 +470,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   semaineRow: {
     flexDirection: 'row',
@@ -463,22 +484,28 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  addButtonInline: {
+  todayHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  addMealInlineButton: {
     backgroundColor: '#1565c0',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
     borderRadius: 8,
   },
-  addButtonInlineText: {
+  addMealInlineButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   todayCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    padding: 14,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#ddd',
   },
@@ -587,7 +614,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2f2f2',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#e6e6e6',
   },
@@ -649,13 +676,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1565c0',
   },
+  weekNavHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  weekNavIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dbe8f8',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekNavLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    textTransform: 'capitalize',
+  },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#fff',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     marginBottom: 6,
     borderRadius: 10,
     borderWidth: 1,
