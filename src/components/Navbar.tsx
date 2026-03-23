@@ -3,15 +3,15 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import HomeScreen from '../screens/HomeScreen';
 import RecipesStack, { type RecipesStackParamList } from '../navigation/RecipesStack';
-import SuiviStack from '../navigation/SuiviStack';
+import SuiviStack, { type SuiviStackParamList } from '../navigation/SuiviStack';
 import ProfileScreen from '../screens/ProfileScreen';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 export type RootTabParamList = {
-  Accueil: undefined;
+  Accueil: { reTapToken?: number } | undefined;
   Recettes: NavigatorScreenParams<RecipesStackParamList>;
-  Suivi: undefined;
-  Profil: undefined;
+  Suivi: NavigatorScreenParams<SuiviStackParamList>;
+  Profil: { reTapToken?: number } | undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -36,10 +36,60 @@ const Navbar = () => {
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Accueil" component={HomeScreen} />
-      <Tab.Screen name="Recettes" component={RecipesStack} />
-      <Tab.Screen name="Suivi" component={SuiviStack} />
-      <Tab.Screen name="Profil" component={ProfileScreen} />
+      <Tab.Screen
+        name="Accueil"
+        component={HomeScreen}
+        listeners={({ navigation, route }) => ({
+          tabPress: (e) => {
+            const isActive = navigation.isFocused();
+            if (!isActive) return;
+            e.preventDefault();
+            navigation.navigate('Accueil', { reTapToken: Date.now() });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Recettes"
+        component={RecipesStack}
+        listeners={({ navigation, route }) => ({
+          tabPress: (e) => {
+            const isActive = navigation.isFocused();
+            if (!isActive) return;
+            e.preventDefault();
+            navigation.navigate('Recettes', {
+              screen: 'Recipes',
+              params: { reTapToken: Date.now() },
+            });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Suivi"
+        component={SuiviStack}
+        listeners={({ navigation, route }) => ({
+          tabPress: (e) => {
+            const isActive = navigation.isFocused();
+            if (!isActive) return;
+            e.preventDefault();
+            navigation.navigate('Suivi', {
+              screen: 'SuiviMain',
+              params: { reTapToken: Date.now() },
+            });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Profil"
+        component={ProfileScreen}
+        listeners={({ navigation, route }) => ({
+          tabPress: (e) => {
+            const isActive = navigation.isFocused();
+            if (!isActive) return;
+            e.preventDefault();
+            navigation.navigate('Profil', { reTapToken: Date.now() });
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 };

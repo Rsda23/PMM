@@ -1,13 +1,12 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
 import RecipesScreen from '../screens/RecipesScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import CreateRecipeScreen from '../screens/CreateRecipeScreen';
 import type { Recipe } from '../services/api/recipesApi';
 
 export type RecipesStackParamList = {
-  Recipes: undefined;
+  Recipes: { reTapToken?: number } | undefined;
   RecipeDetail: Recipe;
   CreateRecipe: { recipe?: Recipe } | undefined;
 };
@@ -15,17 +14,6 @@ export type RecipesStackParamList = {
 const Stack = createNativeStackNavigator<RecipesStackParamList>();
 
 const RecipesStack = () => {
-  const navigation = useNavigation();
-  const parent = navigation.getParent();
-
-  useEffect(() => {
-    if (!parent) return;
-    const unsubscribe = parent.addListener('tabPress', () => {
-      navigation.navigate('Recipes');
-    });
-    return unsubscribe;
-  }, [parent, navigation]);
-
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Recipes" component={RecipesScreen} />
