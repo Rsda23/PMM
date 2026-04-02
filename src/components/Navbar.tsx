@@ -1,11 +1,23 @@
 import React from 'react';
+import { Image, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import HomeScreen from '../screens/HomeScreen';
 import RecipesStack, { type RecipesStackParamList } from '../navigation/RecipesStack';
 import SuiviStack, { type SuiviStackParamList } from '../navigation/SuiviStack';
 import ProfileScreen from '../screens/ProfileScreen';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+
+const iconHome = require('../../assets/figma/navbar/tab-home.png');
+const iconRecettes = require('../../assets/figma/navbar/tab-recettes.png');
+const iconSuivi = require('../../assets/figma/navbar/tab-suivi.png');
+const iconProfil = require('../../assets/figma/navbar/tab-profil.png');
+
+const TAB_ICONS: Record<string, ReturnType<typeof require>> = {
+  Accueil: iconHome,
+  Recettes: iconRecettes,
+  Suivi: iconSuivi,
+  Profil: iconProfil,
+};
 
 export type RootTabParamList = {
   Accueil: { reTapToken?: number } | undefined;
@@ -20,19 +32,14 @@ const Navbar = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          const name =
-            route.name === 'Accueil'
-              ? 'home'
-              : route.name === 'Recettes'
-                ? 'book'
-                : route.name === 'Suivi'
-                  ? 'stats-chart'
-                  : 'person';
-          return <Ionicons name={focused ? name : `${name}-outline`} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#1565c0',
-        tabBarInactiveTintColor: '#666',
+        tabBarIcon: ({ focused }) => (
+          <Image
+            source={TAB_ICONS[route.name]}
+            style={[styles.icon, { tintColor: focused ? '#1565C0' : '#9CA3AF' }]}
+          />
+        ),
+        tabBarActiveTintColor: '#1565C0',
+        tabBarInactiveTintColor: '#9CA3AF',
         headerShown: false,
       })}
     >
@@ -93,5 +100,13 @@ const Navbar = () => {
     </Tab.Navigator>
   );
 };
+
+const styles = StyleSheet.create({
+  icon: {
+    width: 24,
+    height: 24,
+    resizeMode: 'contain',
+  },
+});
 
 export default Navbar;
