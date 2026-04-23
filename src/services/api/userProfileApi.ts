@@ -5,6 +5,7 @@ import type { Objective } from './recipesApi';
 export type UserProfile = {
   objective?: Objective;
   calorieGoal?: number;
+  avatarUrl?: string;
 };
 
 const COLLECTION = 'users';
@@ -20,6 +21,7 @@ export const getUserProfile = async (): Promise<UserProfile | null> => {
     return {
       objective: data.objective ?? undefined,
       calorieGoal: data.calorieGoal ?? undefined,
+      avatarUrl: data.avatarUrl ?? undefined,
     };
   } catch (e) {
     console.warn('getUserProfile failed:', e);
@@ -34,6 +36,7 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   const payload: Record<string, unknown> = {};
   if (updates.objective !== undefined) payload.objective = updates.objective;
   if (updates.calorieGoal !== undefined) payload.calorieGoal = updates.calorieGoal;
+  if (updates.avatarUrl !== undefined) payload.avatarUrl = updates.avatarUrl;
   if (Object.keys(payload).length === 0) return;
   await setDoc(ref, payload, { merge: true });
 };

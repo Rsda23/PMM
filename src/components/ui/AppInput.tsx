@@ -9,6 +9,7 @@ type AppInputProps = {
   placeholder: string;
   iconName?: string;
   iconSource?: ImageSourcePropType;
+  iconText?: string;
   secureTextEntry?: boolean;
   editable?: boolean;
   inputProps?: Omit<TextInputProps, "value" | "onChangeText" | "placeholder" | "secureTextEntry" | "editable">;
@@ -21,11 +22,12 @@ export default function AppInput({
   placeholder,
   iconName,
   iconSource,
+  iconText,
   secureTextEntry = false,
   editable = true,
   inputProps,
 }: AppInputProps) {
-  const hasIcon = Boolean(iconSource || iconName);
+  const hasIcon = Boolean(iconSource || iconName || iconText);
 
   return (
     <View style={styles.root}>
@@ -37,6 +39,8 @@ export default function AppInput({
               <Image source={iconSource} style={styles.iconImg} resizeMode="contain" />
             ) : iconName ? (
               <Ionicons name={iconName} size={18} color="#727783" />
+            ) : iconText ? (
+              <Text style={styles.iconText}>{iconText}</Text>
             ) : null}
           </View>
         ) : null}
@@ -86,6 +90,11 @@ const styles = StyleSheet.create({
   iconImg: {
     width: 18,
     height: 18,
+  },
+  iconText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#727783",
   },
   input: {
     flex: 1,
