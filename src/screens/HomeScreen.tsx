@@ -20,6 +20,7 @@ import {
   type MealType,
 } from '../services/api/mealPlansApi';
 import { getUserProfile } from '../services/api/userProfileApi';
+import { auth } from '../services/firebase/firebaseConfig';
 import { useUserStore } from '../store/userStore';
 import { addDays, getWeekDays, getWeekStart, isToday, toDateString } from '../utils/dateUtils';
 
@@ -78,6 +79,7 @@ const HomeScreen = () => {
   const [updatingMealIds, setUpdatingMealIds] = useState<string[]>([]);
   const [deletingMealIds, setDeletingMealIds] = useState<string[]>([]);
   const [calorieGoal, setCalorieGoal] = useState(2000);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(auth.currentUser?.photoURL ?? null);
   const objective = useUserStore((state) => state.objective);
 
   const loadDashboard = useCallback(async () => {
@@ -95,6 +97,11 @@ const HomeScreen = () => {
     setWeekEntries(weekData);
     if (profile?.calorieGoal && profile.calorieGoal > 0) {
       setCalorieGoal(profile.calorieGoal);
+    }
+    if (profile?.avatarUrl) {
+      setAvatarUrl(profile.avatarUrl);
+    } else if (auth.currentUser?.photoURL) {
+      setAvatarUrl(auth.currentUser.photoURL);
     }
   }, [objective]);
 
@@ -233,6 +240,20 @@ const HomeScreen = () => {
   const featuredTagLabel = SEASON_LABELS[seasonTag];
   const today = toDateString(new Date());
   const consumedPct = calorieGoal > 0 ? Math.round((consumed / calorieGoal) * 100) : 0;
+  const accountName = useMemo(() => {
+    const user = auth.currentUser;
+    const rawName = (user?.displayName ?? user?.email ?? '').trim();
+    if (!rawName) return 'Utilisateur';
+    const fromEmail = rawName.includes('@') ? rawName.split('@')[0] : rawName;
+    const firstChunk = fromEmail.split(/[._\-\s]/).filter(Boolean)[0] ?? fromEmail;
+    return firstChunk.charAt(0).toUpperCase() + firstChunk.slice(1);
+  }, [auth.currentUser?.displayName, auth.currentUser?.email]);
+  const avatarInitial = useMemo(() => {
+    const user = auth.currentUser;
+    const raw = (user?.displayName ?? user?.email ?? '').trim();
+    if (!raw) return '?';
+    return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
+  }, [auth.currentUser?.displayName, auth.currentUser?.email]);
   const widthStyleByStep = (step: number) => {
     const map = [styles.w0, styles.w10, styles.w20, styles.w30, styles.w40, styles.w50, styles.w60, styles.w70, styles.w80, styles.w90, styles.w100];
     return map[Math.max(0, Math.min(step, 10))];
@@ -256,8 +277,16 @@ const HomeScreen = () => {
           <TouchableOpacity style={styles.iconCircle}>
             <Image source={iconSearch} style={styles.searchIcon} />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconCircle, styles.iconCircleAvatar]}>
-            <Ionicons name="person" size={15} color="#FFFFFF" />
+          <TouchableOpacity
+            style={[styles.iconCircle, styles.iconCircleAvatar]}
+            onPress={() => navigation.navigate('Profil', undefined)}
+            activeOpacity={0.8}
+          >
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.profilIcon} />
+            ) : (
+              <Text style={styles.profilInitial}>{avatarInitial}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -267,7 +296,7 @@ const HomeScreen = () => {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-      <Text style={styles.greeting}>Bonjour, Alex</Text>
+      <Text style={styles.greeting}>Bonjour, {accountName}</Text>
       <Text style={styles.subtitle}>
         {'Vous êtes à '}
         <Text style={styles.subtitleHighlight}>{consumedPct}%</Text>
@@ -510,12 +539,23 @@ const styles = StyleSheet.create({
   },
   iconCircleAvatar: {
     backgroundColor: '#1E293B',
+    overflow: 'hidden',
   },
   searchIcon: {
     width: 18,
     height: 18,
     resizeMode: 'contain',
     tintColor: '#0F172A',
+  },
+  profilIcon: {
+    width: 32,
+    height: 32,
+    resizeMode: 'cover',
+  },
+  profilInitial: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   container: {
     paddingHorizontal: 16,
