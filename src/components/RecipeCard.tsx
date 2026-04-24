@@ -1,7 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useUserStore } from '../store/userStore';
+
+const iconDifficulty = require('../../assets/figma/recette/icon-difficulty.png');
+const iconStar = require('../../assets/figma/recette/icon-star.png');
+
+const TAG_LABELS: Record<string, string> = {
+  perte_poids: 'Perte de poids',
+  prise_masse: 'Prise de masse',
+  equilibre: 'Équilibré',
+  vegetarien: 'Végétarien',
+  riche_proteine: 'Protéines',
+  rapide: 'Rapide',
+  sans_gluten: 'Sans Gluten',
+  faible_carb: 'Faible Carb',
+  petit_dej: 'Petit-Dej',
+  energie: 'Énergie',
+};
 
 type RecipeCardProps = {
   id: string;
@@ -9,48 +24,71 @@ type RecipeCardProps = {
   calories?: number;
   tags?: string[];
   image?: string | null;
+  rating?: number;
+  difficulty?: string;
   onPress?: () => void;
 };
 
-const RecipeCard: React.FC<RecipeCardProps> = ({ id, title, calories, tags, image, onPress }) => {
-  const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
-  const toggleFavorite = useUserStore((state) => state.toggleFavorite);
-  const isFavorite = favoriteRecipeIds.includes(id);
+const RecipeCard: React.FC<RecipeCardProps> = ({
+  id,
+  title,
+  calories,
+  tags,
+  image,
+  rating,
+  difficulty,
+  onPress,
+}) => {
+  const displayTags = (tags ?? []).slice(0, 2);
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.card}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.card}>
       <View style={styles.imageWrapper}>
         {image ? (
           <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Ionicons name="restaurant-outline" size={32} color="#999" />
+            <Ionicons name="restaurant-outline" size={40} color="#ccc" />
+          </View>
+        )}
+        {rating !== undefined && (
+          <View style={styles.ratingBadge}>
+            <Image source={iconStar} style={styles.starIcon} />
+            <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
           </View>
         )}
       </View>
+
       <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          <TouchableOpacity
-            onPress={() => toggleFavorite(id)}
-            style={styles.favoriteButton}
-            activeOpacity={0.7}
-          >
-            <Text style={isFavorite ? styles.favoriteIconActive : styles.favoriteIcon}>
-              {isFavorite ? '★' : '☆'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {calories !== undefined && <Text style={styles.calories}>{calories} kcal</Text>}
-        {tags && tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {tags.slice(0, 3).map((tag) => (
-              <View key={tag} style={styles.tag}>
-                <Text style={styles.tagText}>{tag}</Text>
+        {displayTags.length > 0 && (
+          <View style={styles.tagsRow}>
+            {displayTags.map((tag) => (
+              <View key={tag} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>{TAG_LABELS[tag] ?? tag}</Text>
               </View>
             ))}
           </View>
         )}
+
+        <Text style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
+
+        <View style={styles.footer}>
+          <View style={styles.footerLeft}>
+            {calories !== undefined && (
+              <Text style={styles.calories}>{calories} kcal</Text>
+            )}
+          </View>
+          <View style={styles.footerRight}>
+            {difficulty ? (
+              <View style={styles.diffRow}>
+                <Image source={iconDifficulty} style={styles.diffIcon} />
+                <Text style={styles.diffText}>{difficulty}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -58,23 +96,20 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ id, title, calories, tags, imag
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 12,
-    marginVertical: 8,
-    elevation: 2,
+    overflow: 'hidden',
+    marginBottom: 24,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   imageWrapper: {
-    width: 88,
-    height: 88,
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginRight: 12,
+    height: 192,
+    width: '100%',
+    backgroundColor: '#E5E7EB',
   },
   image: {
     width: '100%',
@@ -83,60 +118,94 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#eee',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
-  content: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerRow: {
+  ratingBadge: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  title: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  favoriteButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  favoriteIcon: {
-    fontSize: 20,
-    color: '#ccc',
-  },
-  favoriteIconActive: {
-    fontSize: 20,
-    color: '#ffb300',
-  },
-  calories: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 6,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tag: {
-    backgroundColor: '#e3f2fd',
-    borderRadius: 12,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginRight: 6,
-    marginBottom: 6,
+    borderRadius: 8,
   },
-  tagText: {
+  starIcon: {
+    width: 11,
+    height: 11,
+    resizeMode: 'contain',
+  },
+  ratingText: {
     fontSize: 12,
-    color: '#1565c0',
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  content: {
+    padding: 20,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  tagChip: {
+    backgroundColor: '#e8e8e8',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  tagChipText: {
+    fontSize: 10,
+    color: '#424752',
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
+    fontWeight: '500',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    marginBottom: 12,
+    lineHeight: 25,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  footerLeft: {
+    flex: 1,
+  },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  calories: {
+    fontSize: 14,
+    color: '#004d99',
+    fontWeight: '500',
+  },
+  diffRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  diffIcon: {
+    width: 12,
+    height: 12,
+    resizeMode: 'contain',
+    tintColor: '#727783',
+  },
+  diffText: {
+    fontSize: 14,
+    color: '#727783',
   },
 });
 
 export default RecipeCard;
-

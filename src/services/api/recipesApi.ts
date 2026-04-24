@@ -21,6 +21,8 @@ export type Recipe = {
   instructions?: string[];
   image?: string;
   createdBy?: string | null;
+  difficulty?: string;
+  rating?: number;
 };
 
 /** Document Firestore "recipes" (README) : name, ingredients, calories, tags */
@@ -33,6 +35,8 @@ type RecipeDocument = {
   calories: number;
   tags: string[];
   createdBy?: string | null;
+  difficulty?: string;
+  rating?: number;
 };
 
 export const getRecommendedRecipes = async (
@@ -65,6 +69,8 @@ export const getAllRecipes = async (): Promise<Recipe[]> => {
           : undefined,
         image: data.image,
         createdBy: data.createdBy ?? null,
+        difficulty: data.difficulty,
+        rating: data.rating,
       };
     });
   } catch (e) {
