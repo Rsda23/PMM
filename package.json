@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "import:themealdb": "node ./scripts/import-themealdb-to-firestore.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -20,6 +21,7 @@
     "expo-linear-gradient": "~15.0.8",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.10.0",
+    "firebase-admin": "^13.8.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-calendars": "^1.1314.0",
