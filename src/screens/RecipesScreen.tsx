@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import RecipeCard from '../components/RecipeCard';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
@@ -23,6 +22,10 @@ import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile } from '../services/api/userProfileApi';
 
 const iconSearch = require('../../assets/figma/navbar/tab-search.png');
+const iconPlus = require('../../assets/figma/recette/plus.png');
+const iconStarWhite = require('../../assets/figma/recette/star-white.png');
+const iconTime = require('../../assets/figma/recette/icon-time.png');
+const iconFire = require('../../assets/figma/recette/icon-fire.png');
 
 type RecipesNavProp = NativeStackNavigationProp<RecipesStackParamList, 'Recipes'>;
 
@@ -186,7 +189,7 @@ const RecipesScreen = () => {
             onPress={() => navigation.navigate('CreateRecipe')}
             activeOpacity={0.85}
           >
-            <Ionicons name="add" size={15} color="#FFFFFF" />
+            <Image source={iconPlus} style={styles.plusIcon} />
             <Text style={styles.createBtnText}>Créer</Text>
           </TouchableOpacity>
         </View>
@@ -243,11 +246,11 @@ const RecipesScreen = () => {
                   </Text>
                   <View style={styles.heroMeta}>
                     <View style={styles.heroMetaItem}>
-                      <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.9)" />
+                      <Image source={iconTime} style={styles.heroMetaIcon} />
                       <Text style={styles.heroMetaText}>15 min</Text>
                     </View>
                     <View style={styles.heroMetaItem}>
-                      <Ionicons name="flame-outline" size={12} color="rgba(255,255,255,0.9)" />
+                      <Image source={iconFire} style={styles.heroMetaIcon} />
                       <Text style={styles.heroMetaText}>{featuredRecipe.calories} kcal</Text>
                     </View>
                   </View>
@@ -257,10 +260,9 @@ const RecipesScreen = () => {
                   onPress={() => toggleFavorite(featuredRecipe.id)}
                   activeOpacity={0.8}
                 >
-                  <Ionicons
-                    name={isFeaturedFav ? 'bookmark' : 'bookmark-outline'}
-                    size={20}
-                    color="#FFFFFF"
+                  <Image
+                    source={iconStarWhite}
+                    style={[styles.heroBookmarkIcon, isFeaturedFav && styles.heroBookmarkIconActive]}
                   />
                 </TouchableOpacity>
               </View>
@@ -391,6 +393,12 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 8,
   },
+  plusIcon: {
+    width: 14,
+    height: 14,
+    resizeMode: 'contain',
+    tintColor: '#FFFFFF',
+  },
   createBtnText: {
     fontSize: 16,
     fontWeight: '600',
@@ -481,6 +489,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  heroMetaIcon: {
+    width: 12,
+    height: 12,
+    resizeMode: 'contain',
+    tintColor: 'rgba(255,255,255,0.9)',
+  },
   heroMetaText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
@@ -492,6 +506,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  heroBookmarkIcon: {
+    width: 20,
+    height: 20,
+    resizeMode: 'contain',
+    tintColor: 'rgba(255,255,255,0.7)',
+  },
+  heroBookmarkIconActive: {
+    tintColor: '#FFFFFF',
   },
   /* ── Section header ── */
   sectionHeader: {
