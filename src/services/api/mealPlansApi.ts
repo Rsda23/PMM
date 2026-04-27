@@ -25,6 +25,9 @@ export type MealPlanEntry = {
   recipeId: string;
   recipeTitle: string;
   calories: number;
+  protein?: number;
+  carbs?: number;
+  fats?: number;
   status: MealPlanStatus;
   createdAt?: Date; // optionnel pour les anciens documents
 };
@@ -55,6 +58,9 @@ function parseEntry(docSnap: { id: string; data: () => Record<string, unknown> }
     recipeId: data.recipeId as string,
     recipeTitle: (data.recipeTitle as string) ?? '',
     calories: (data.calories as number) ?? 0,
+    protein: typeof data.protein === 'number' ? data.protein : undefined,
+    carbs: typeof data.carbs === 'number' ? data.carbs : undefined,
+    fats: typeof data.fats === 'number' ? data.fats : undefined,
     status: ((data.status as string) ?? 'planned') as MealPlanStatus,
     ...(createdAt && { createdAt }),
   };
@@ -100,6 +106,9 @@ export async function addMealPlan(params: {
   recipeId: string;
   recipeTitle: string;
   calories: number;
+  protein?: number;
+  carbs?: number;
+  fats?: number;
 }): Promise<string> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Tu dois être connecté pour planifier un repas.');
@@ -110,6 +119,9 @@ export async function addMealPlan(params: {
     recipeId: params.recipeId,
     recipeTitle: params.recipeTitle,
     calories: params.calories,
+    ...(params.protein !== undefined ? { protein: params.protein } : {}),
+    ...(params.carbs !== undefined ? { carbs: params.carbs } : {}),
+    ...(params.fats !== undefined ? { fats: params.fats } : {}),
     status: 'planned',
     createdAt: serverTimestamp(),
   });

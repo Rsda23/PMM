@@ -27,7 +27,6 @@ import { addDays, getWeekDays, getWeekStart, isToday, toDateString } from '../ut
 type HomeScreenNavigationProp = BottomTabNavigationProp<RootTabParamList, 'Accueil'>;
 type SeasonTag = 'hiver' | 'printemps' | 'ete' | 'automne';
 
-const iconSearch = require('../../assets/figma/navbar/tab-search.png');
 const iconPlusWhite = require('../../assets/figma/home/icon-plus-white.png');
 const iconPlusBlue = require('../../assets/figma/home/icon-plus-blue.png');
 const iconCheck = require('../../assets/figma/home/icon-check.png');
@@ -202,22 +201,31 @@ const HomeScreen = () => {
   }, [recommendedRecipes, objective, calorieGoal, consumed]);
 
   const macroRows = useMemo(() => {
-    const proteinKcal = consumed * 0.3;
-    const carbsKcal = consumed * 0.4;
-    const fatKcal = consumed * 0.3;
+    const consumedEntries = todayEntries.filter((entry) => entry.status === 'completed');
+    const carbsKcal = consumedEntries.reduce((sum, entry) => sum + Math.max(entry.carbs ?? 0, 0) * 4, 0);
+    const fatsKcal = consumedEntries.reduce((sum, entry) => sum + Math.max(entry.fats ?? 0, 0) * 9, 0);
+    const proteinKcal = consumedEntries.reduce((sum, entry) => sum + Math.max(entry.protein ?? 0, 0) * 4, 0);
+    const unknownKcal = consumedEntries.reduce((sum, entry) => {
+      const known = Math.max(entry.carbs ?? 0, 0) * 4 + Math.max(entry.fats ?? 0, 0) * 9 + Math.max(entry.protein ?? 0, 0) * 4;
+      return sum + Math.max((entry.calories ?? 0) - known, 0);
+    }, 0);
+
     const protein = Math.round(proteinKcal / 4);
     const carbs = Math.round(carbsKcal / 4);
-    const fats = Math.round(fatKcal / 9);
+    const fats = Math.round(fatsKcal / 9);
+    const unknown = Math.round(unknownKcal);
+
     const proteinGoal = Math.max(Math.round((calorieGoal * 0.3) / 4), 1);
     const carbsGoal = Math.max(Math.round((calorieGoal * 0.4) / 4), 1);
     const fatsGoal = Math.max(Math.round((calorieGoal * 0.3) / 9), 1);
 
     return [
-      { key: 'protein', label: 'PROT', value: protein, goal: proteinGoal, ratio: protein / proteinGoal, fillStyle: styles.macroFillBlue },
-      { key: 'carbs', label: 'GLUC', value: carbs, goal: carbsGoal, ratio: carbs / carbsGoal, fillStyle: styles.macroFillOrange },
-      { key: 'fats', label: 'LIP', value: fats, goal: fatsGoal, ratio: fats / fatsGoal, fillStyle: styles.macroFillGray },
+      { key: 'protein', label: 'PROT', value: protein, goal: proteinGoal, ratio: protein / proteinGoal, fillStyle: styles.macroFillProtein, labelStyle: styles.macroTextProtein },
+      { key: 'carbs', label: 'GLUC', value: carbs, goal: carbsGoal, ratio: carbs / carbsGoal, fillStyle: styles.macroFillCarbs, labelStyle: styles.macroTextCarbs },
+      { key: 'fats', label: 'LIP', value: fats, goal: fatsGoal, ratio: fats / fatsGoal, fillStyle: styles.macroFillFats, labelStyle: styles.macroTextFats },
+      { key: 'unknown', label: 'NON IND', value: unknown, goal: calorieGoal, ratio: calorieGoal > 0 ? unknown / calorieGoal : 0, fillStyle: styles.macroFillUnknown, labelStyle: styles.macroTextUnknown, isKcal: true as const },
     ];
-  }, [consumed, calorieGoal]);
+  }, [todayEntries, calorieGoal]);
 
   const mealHighlights = useMemo(() => {
     return todayEntries
@@ -274,9 +282,6 @@ const HomeScreen = () => {
       <View style={styles.topNav}>
         <Text style={styles.brand}>PMM</Text>
         <View style={styles.topIcons}>
-          <TouchableOpacity style={styles.iconCircle}>
-            <Image source={iconSearch} style={styles.searchIcon} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconCircle, styles.iconCircleAvatar]}
             onPress={() => navigation.navigate('Profil', undefined)}
@@ -331,9 +336,10 @@ const HomeScreen = () => {
           {macroRows.map((macro) => (
             <View key={macro.key} style={styles.macroRow}>
               <View style={styles.macroRowTop}>
-                <Text style={styles.macroLabel}>{macro.label}</Text>
-                <Text style={styles.macroValue}>
-                  {macro.value}/{macro.goal}
+                <Text style={[styles.macroLabel, macro.labelStyle]}>{macro.label}</Text>
+                <Text style={[styles.macroValue, macro.labelStyle]}>
+                  {macro.value}/{macro.goal}{' '}
+                  {'isKcal' in macro && macro.isKcal ? 'kcal' : 'g'}
                 </Text>
               </View>
               <View style={styles.macroTrack}>
@@ -512,17 +518,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
-    backgroundColor: '#F7F8FA',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    zIndex: 10,
   },
   brand: {
     color: '#2563EB',
     fontWeight: '900',
-    letterSpacing: -0.2,
+    letterSpacing: -0.5,
     fontSize: 20,
-    lineHeight: 24,
+    lineHeight: 28,
   },
   topIcons: {
     flexDirection: 'row',
@@ -530,30 +538,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#E8E8E8',
   },
   iconCircleAvatar: {
     backgroundColor: '#1E293B',
     overflow: 'hidden',
-  },
-  searchIcon: {
-    width: 18,
-    height: 18,
-    resizeMode: 'contain',
-    tintColor: '#0F172A',
+    borderWidth: 2,
+    borderColor: 'rgba(0,85,255,0.1)',
   },
   profilIcon: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     resizeMode: 'cover',
   },
   profilInitial: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -641,15 +645,22 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
   },
-  macroFillBlue: {
+  macroFillProtein: {
     backgroundColor: '#2563EB',
   },
-  macroFillOrange: {
+  macroFillCarbs: {
     backgroundColor: '#F59E0B',
   },
-  macroFillGray: {
+  macroFillFats: {
+    backgroundColor: '#16A34A',
+  },
+  macroFillUnknown: {
     backgroundColor: '#64748B',
   },
+  macroTextProtein: { color: '#2563EB' },
+  macroTextCarbs: { color: '#F59E0B' },
+  macroTextFats: { color: '#16A34A' },
+  macroTextUnknown: { color: '#64748B' },
   sectionRow: {
     marginTop: 6,
     marginBottom: 8,
