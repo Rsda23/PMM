@@ -383,6 +383,18 @@ const ProfileScreen = () => {
   const iconDelete = require('../../assets/figma/home/icon-trash.png');
   const iconCancelWhite = require('../../assets/figma/suivi/icon-cancel-white.png');
   const iconCheckWhite = require('../../assets/figma/suivi/icon-check-white.png');
+  const iconSettingUser = require('../../assets/figma/setting/icon-user.png');
+  const iconSettingMail = require('../../assets/figma/setting/icon-mail.png');
+  const iconSettingPass = require('../../assets/figma/setting/icon-pass.png');
+  const iconSettingProd = require('../../assets/figma/setting/icon-prod.png');
+  const iconSettingTag = require('../../assets/figma/setting/icon-tag.png');
+  const iconSettingNotif = require('../../assets/figma/setting/icon-notif.png');
+  const iconSettingTheme = require('../../assets/figma/setting/icon-theme.png');
+  const iconSettingInfo = require('../../assets/figma/setting/icon-info.png');
+  const iconSettingConf = require('../../assets/figma/setting/icon-conf.png');
+  const iconSettingCondi = require('../../assets/figma/setting/icon-condi.png');
+  const iconSettingVersion = require('../../assets/figma/setting/icon-version.png');
+  const iconSettingCheck = require('../../assets/figma/setting/icon-check.png');
 
   if (settingsVisible) {
     const settingsHeader = (title: string, onBack: () => void) => (
@@ -694,8 +706,8 @@ const ProfileScreen = () => {
           <View style={styles.settingsGroup}>
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('username')}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="person-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingUser} style={styles.settingsMenuIcon} />
                 </View>
                 <View>
                   <Text style={styles.settingsLabel}>Modifier le nom d'utilisateur</Text>
@@ -704,56 +716,56 @@ const ProfileScreen = () => {
                   ) : null}
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('email')}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="mail-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingMail} style={styles.settingsMenuIcon} />
                 </View>
                 <View>
                   <Text style={styles.settingsLabel}>Modifier l'email</Text>
                   <Text style={styles.settingsSubLabel}>{auth.currentUser?.email ?? ''}</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('password')}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="key-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingPass} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>Modifier le mot de passe</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('ingredients')}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="restaurant-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingProd} style={styles.settingsMenuIcon} />
                 </View>
                 <View>
                   <Text style={styles.settingsLabel}>Mes ingrédients</Text>
                   <Text style={styles.settingsSubLabel}>{customIngredients.length} élément(s)</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('tags')}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="pricetag-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingTag} style={styles.settingsMenuIcon} />
                 </View>
                 <View>
                   <Text style={styles.settingsLabel}>Mes tags</Text>
                   <Text style={styles.settingsSubLabel}>{customTags.length} élément(s)</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
           </View>
 
@@ -761,8 +773,8 @@ const ProfileScreen = () => {
           <View style={styles.settingsGroup}>
             <View style={styles.settingsItem}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="notifications-outline" size={18} color="#2563EB" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingNotif} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>Notifications</Text>
               </View>
@@ -776,8 +788,8 @@ const ProfileScreen = () => {
             <View style={styles.settingsDivider} />
             <View style={styles.settingsItem}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#F1F5F9' }]}>
-                  <Ionicons name="moon-outline" size={18} color="#475569" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingTheme} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>Mode sombre</Text>
               </View>
@@ -794,38 +806,38 @@ const ProfileScreen = () => {
           <View style={styles.settingsGroup}>
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <Ionicons name="information-circle-outline" size={18} color="#16A34A" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingInfo} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>À propos de PMM</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#FFF7ED' }]}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#EA580C" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingConf} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>Confidentialité</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#F8FAFC' }]}>
-                  <Ionicons name="document-text-outline" size={18} color="#64748B" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingCondi} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={styles.settingsLabel}>Conditions d'utilisation</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+              <Image source={iconSettingCheck} style={styles.settingsRightCheckIcon} />
             </TouchableOpacity>
             <View style={styles.settingsDivider} />
             <View style={styles.settingsItem}>
               <View style={styles.settingsItemLeft}>
-                <View style={[styles.settingsIcon, { backgroundColor: '#F8FAFC' }]}>
-                  <Ionicons name="code-slash-outline" size={18} color="#94A3B8" />
+                <View style={styles.settingsIcon}>
+                  <Image source={iconSettingVersion} style={styles.settingsMenuIcon} />
                 </View>
                 <Text style={[styles.settingsLabel, { color: '#94A3B8' }]}>Version</Text>
               </View>
@@ -1100,6 +1112,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  settingsMenuIcon: {
+    width: 18,
+    height: 18,
+    resizeMode: 'contain',
+  },
+  settingsRightCheckIcon: {
+    width: 14,
+    height: 14,
+    resizeMode: 'contain',
+    tintColor: '#94A3B8',
   },
   settingsLabel: {
     fontSize: 14,
