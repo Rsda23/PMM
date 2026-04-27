@@ -8,6 +8,8 @@ type UserState = {
   setObjective: (objective: Objective) => void;
   favoriteRecipeIds: string[];
   toggleFavorite: (id: string) => void;
+  removeFavorite: (id: string) => void;
+  pruneFavorites: (validRecipeIds: string[]) => void;
 };
 
 export const useUserStore = create<UserState>()(
@@ -25,6 +27,18 @@ export const useUserStore = create<UserState>()(
               ? state.favoriteRecipeIds.filter((favId) => favId !== id)
               : [...state.favoriteRecipeIds, id],
           };
+        }),
+      removeFavorite: (id) =>
+        set((state) => ({
+          favoriteRecipeIds: state.favoriteRecipeIds.filter((favId) => favId !== id),
+        })),
+      pruneFavorites: (validRecipeIds) =>
+        set((state) => {
+          if (state.favoriteRecipeIds.length === 0) return state;
+          const valid = new Set(validRecipeIds);
+          const next = state.favoriteRecipeIds.filter((favId) => valid.has(favId));
+          if (next.length === state.favoriteRecipeIds.length) return state;
+          return { favoriteRecipeIds: next };
         }),
     }),
     {

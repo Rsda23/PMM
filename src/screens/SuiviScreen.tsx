@@ -8,92 +8,89 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
-import { PanGestureHandler } from 'react-native-gesture-handler';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
+import type { RootTabParamList } from '../components/Navbar';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
 import {
   getMealPlansForDateRange,
   getMealPlansForDay,
   groupEntriesByDate,
-  MEAL_TYPE_LABELS,
   totalCalories,
   type MealPlanEntry,
-  type MealType,
 } from '../services/api/mealPlansApi';
 import {
   getWeekStart,
   getWeekDays,
   addDays,
   toDateString,
-  isToday,
-  formatDayLong,
 } from '../utils/dateUtils';
+import { auth } from '../services/firebase/firebaseConfig';
 
-type Nav = NativeStackNavigationProp<SuiviStackParamList, 'SuiviMain'>;
-
-const DEFAULT_CALORIE_GOAL = 2000;
-type ViewMode = 'week' | 'month';
-
-// Locale FR pour react-native-calendars
 LocaleConfig.locales.fr = {
-  monthNames: [
-    'Janvier',
-    'Février',
-    'Mars',
-    'Avril',
-    'Mai',
-    'Juin',
-    'Juillet',
-    'Août',
-    'Septembre',
-    'Octobre',
-    'Novembre',
-    'Décembre',
-  ],
-  monthNamesShort: [
-    'Jan',
-    'Fév',
-    'Mar',
-    'Avr',
-    'Mai',
-    'Juin',
-    'Juil',
-    'Aoû',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Déc',
-  ],
-  dayNames: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'],
-  dayNamesShort: ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'],
+  monthNames: ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'],
+  monthNamesShort: ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'],
+  dayNames: ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],
+  dayNamesShort: ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],
   today: "Aujourd'hui",
 };
 LocaleConfig.defaultLocale = 'fr';
 
+type Nav = NativeStackNavigationProp<SuiviStackParamList, 'SuiviMain'>;
+const DEFAULT_CALORIE_GOAL = 2000;
+type ViewMode = 'week' | 'month';
+
+const DAY_ABBR = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner'] as const;
+type MealKey = (typeof MEAL_ORDER)[number];
+const iconEdit = require('../../assets/figma/suivi/icon-edit.png');
+const iconCheckWhite = require('../../assets/figma/suivi/icon-check-white.png');
+const iconCancelWhite = require('../../assets/figma/suivi/icon-cancel-white.png');
+const iconMatin = require('../../assets/figma/suivi/icon-matin.png');
+const iconMidi = require('../../assets/figma/suivi/icon-midi.png');
+const iconCollation = require('../../assets/figma/suivi/icon-col.png');
+const iconDinner = require('../../assets/figma/suivi/icon-din.png');
+const iconLeft = require('../../assets/figma/suivi/left.png');
+const iconRight = require('../../assets/figma/suivi/right.png');
+
+type MealMeta = { label: string; icon: ReturnType<typeof require> };
+const MEAL_META: Record<MealKey, MealMeta> = {
+  breakfast: { label: 'Petit Déjeuner', icon: iconMatin },
+  lunch: { label: 'Déjeuner', icon: iconMidi },
+  snack: { label: 'Collation', icon: iconCollation },
+  dinner: { label: 'Dîner', icon: iconDinner },
+};
+
 const SuiviScreen = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<SuiviStackParamList, 'SuiviMain'>>();
-  const scrollRef = React.useRef<ScrollView>(null);
-  const [calorieGoal, setCalorieGoal] = useState<number>(DEFAULT_CALORIE_GOAL);
-  const [editingGoalFromTodayCard, setEditingGoalFromTodayCard] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const [calorieGoal, setCalorieGoal] = useState(DEFAULT_CALORIE_GOAL);
+  const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   const [entries, setEntries] = useState<MealPlanEntry[]>([]);
   const [todayEntries, setTodayEntries] = useState<MealPlanEntry[]>([]);
+  const [prevWeekEntries, setPrevWeekEntries] = useState<MealPlanEntry[]>([]);
+  const [selectedDate, setSelectedDate] = useState(() => toDateString(new Date()));
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [monthEntries, setMonthEntries] = useState<MealPlanEntry[]>([]);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(auth.currentUser?.photoURL ?? null);
   const hasLoadedOnceRef = useRef(false);
+  const todayStr = toDateString(new Date());
 
   const loadProfile = useCallback(async () => {
     const profile = await getUserProfile();
@@ -103,20 +100,24 @@ const SuiviScreen = () => {
     } else {
       setGoalInput(String(DEFAULT_CALORIE_GOAL));
     }
+    if (profile?.avatarUrl) setAvatarUrl(profile.avatarUrl);
+    else if (auth.currentUser?.photoURL) setAvatarUrl(auth.currentUser.photoURL);
   }, []);
 
   const loadWeek = useCallback(async () => {
-    const start = weekStart;
-    const end = addDays(start, 6);
-    const data = await getMealPlansForDateRange(start, end);
-    setEntries(data);
+    const end = addDays(weekStart, 6);
+    const [current, prev] = await Promise.all([
+      getMealPlansForDateRange(weekStart, end),
+      getMealPlansForDateRange(addDays(weekStart, -7), addDays(weekStart, -1)),
+    ]);
+    setEntries(current);
+    setPrevWeekEntries(prev);
   }, [weekStart]);
 
   const loadToday = useCallback(async () => {
-    const today = toDateString(new Date());
-    const data = await getMealPlansForDay(today);
+    const data = await getMealPlansForDay(todayStr);
     setTodayEntries(data);
-  }, []);
+  }, [todayStr]);
 
   const loadMonth = useCallback(async () => {
     const start = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
@@ -129,8 +130,6 @@ const SuiviScreen = () => {
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        // Affiche le loader uniquement au tout premier affichage.
-        // Ensuite, les refresh (focus/re-tap) restent silencieux pour une UX fluide.
         if (!hasLoadedOnceRef.current) {
           setLoading(true);
           await loadProfile();
@@ -139,24 +138,15 @@ const SuiviScreen = () => {
           hasLoadedOnceRef.current = true;
           return;
         }
-
         await Promise.all([loadProfile(), loadWeek(), loadToday(), loadMonth()]);
       })();
       return () => { cancelled = true; };
     }, [loadProfile, loadWeek, loadToday, loadMonth]),
   );
 
-  useEffect(() => {
-    loadWeek();
-  }, [weekStart]);
-
-  useEffect(() => {
-    loadToday();
-  }, []);
-
-  useEffect(() => {
-    loadMonth();
-  }, [monthCursor]);
+  useEffect(() => { loadWeek(); }, [weekStart]);
+  useEffect(() => { loadToday(); }, [todayStr]);
+  useEffect(() => { loadMonth(); }, [monthCursor]);
 
   useEffect(() => {
     if (!route.params?.reTapToken) return;
@@ -167,80 +157,77 @@ const SuiviScreen = () => {
   const persistGoal = async (): Promise<boolean> => {
     const n = parseInt(goalInput, 10);
     if (isNaN(n) || n < 500 || n > 10000) {
-      Alert.alert('Objectif invalide', 'Saisis un nombre entre 500 et 10000 kcal.');
+      Alert.alert('Objectif invalide', 'Saisis un nombre entre 500 et 10 000 kcal.');
       return false;
     }
     setCalorieGoal(n);
     try {
       await updateUserProfile({ calorieGoal: n });
-    } catch (e) {
-      Alert.alert('Erreur', 'Impossible d’enregistrer l’objectif.');
+    } catch {
+      Alert.alert('Erreur', 'Impossible d\'enregistrer l\'objectif.');
       return false;
     }
     return true;
   };
 
-  const saveGoalFromTodayCard = async () => {
+  const saveGoal = async () => {
     const ok = await persistGoal();
-    if (ok) setEditingGoalFromTodayCard(false);
+    if (ok) setEditingGoal(false);
   };
 
   const byDate = groupEntriesByDate(entries);
-  const todayStr = toDateString(new Date());
-  const todayPlanned = totalCalories(todayEntries, false);
-  const todayConsumed = totalCalories(todayEntries, true);
   const weekDays = getWeekDays(weekStart);
+  const selectedDayEntries = byDate.get(selectedDate) ?? [];
 
-  const todayPlannedPreview = useMemo(() => {
-    const planned = todayEntries.filter((e) => e.status === 'planned' || e.status === 'completed');
-    if (planned.length === 0) return [];
-    const byType = new Map<MealType, string[]>();
-    for (const e of planned) {
-      const list = byType.get(e.mealType) ?? [];
-      list.push(e.recipeTitle);
-      byType.set(e.mealType, list);
-    }
-    const order: MealType[] = ['breakfast', 'lunch', 'snack', 'dinner'];
-    return order
-      .map((t) => {
-        const items = byType.get(t);
-        if (!items || items.length === 0) return null;
-        const unique = Array.from(new Set(items)).slice(0, 2);
-        const suffix = items.length > 2 ? ` +${items.length - 2}` : '';
-        return `${MEAL_TYPE_LABELS[t]} : ${unique.join(' • ')}${suffix}`;
-      })
-      .filter((x): x is string => Boolean(x));
-  }, [todayEntries]);
-
-  const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
-  const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
+  const todayConsumed = totalCalories(todayEntries, true);
+  const todayPlanned = totalCalories(todayEntries, false);
+  const todayGoalPct = calorieGoal > 0 ? Math.min(1, todayConsumed / calorieGoal) : 0;
+  const todayGoalPctDisplay = Math.round(todayGoalPct * 100);
 
   const weekLabel = useMemo(() => {
     const start = new Date(weekStart);
     const end = addDays(weekStart, 6);
-
     const startDay = start.getDate();
     const endDay = end.getDate();
-    const startMonth = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(start);
-    const endMonth = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(end);
-    const startYear = start.getFullYear();
-    const endYear = end.getFullYear();
-
-    if (startMonth === endMonth && startYear === endYear) {
-      return `${startDay}\u2013${endDay} ${startMonth} ${startYear}`;
-    }
-    if (startYear === endYear) {
-      return `${startDay} ${startMonth}\u2013${endDay} ${endMonth} ${startYear}`;
-    }
-    return `${startDay} ${startMonth} ${startYear}\u2013${endDay} ${endMonth} ${endYear}`;
+    const startMonth = new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(start);
+    const endMonth = new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(end);
+    if (startMonth === endMonth) return `${startDay} – ${endDay} ${startMonth}`;
+    return `${startDay} ${startMonth} – ${endDay} ${endMonth}`;
   }, [weekStart]);
 
-  const handleWeekSwipeEnded = (event: any) => {
-    const dx = event?.nativeEvent?.translationX ?? 0;
-    const threshold = 70;
-    if (dx > threshold) goPrevWeek();
-    else if (dx < -threshold) goNextWeek();
-  };
+  const selectedDayDetails = useMemo(() => {
+    return MEAL_ORDER.map((mealType) => {
+      const entriesForType = selectedDayEntries.filter((e) => e.mealType === mealType);
+      const calories = entriesForType.reduce((sum, e) => sum + e.calories, 0);
+      const recipeNames = entriesForType
+        .map((e) => e.recipeTitle)
+        .filter(Boolean)
+        .slice(0, 2)
+        .join(', ');
+
+      return {
+        mealType,
+        calories,
+        subtitle:
+          recipeNames.length > 0
+            ? recipeNames
+            : mealType === 'dinner' && selectedDate > todayStr
+              ? 'À planifier'
+              : 'Aucun repas enregistré',
+        isPlannedOnly: entriesForType.length > 0 && entriesForType.every((e) => e.status === 'planned'),
+        hasData: entriesForType.length > 0,
+      };
+    });
+  }, [selectedDayEntries, selectedDate, todayStr]);
+
+  const selectedDayConsumed = totalCalories(selectedDayEntries, true);
+  const selectedDayLabel = useMemo(() => {
+    const d = new Date(selectedDate);
+    const dayName = new Intl.DateTimeFormat('fr-FR', { weekday: 'long' }).format(d);
+    const dayNum = d.getDate();
+    const month = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(d);
+    return `Détails du ${dayName} ${dayNum} ${month}`.toUpperCase();
+  }, [selectedDate]);
 
   const markedDates = useMemo(() => {
     const map: Record<string, { dots?: { key: string; color: string }[]; selected?: boolean; selectedColor?: string }> = {};
@@ -249,524 +236,712 @@ const SuiviScreen = () => {
       const hasPlanned = list.some((e) => e.status === 'planned');
       const hasCompleted = list.some((e) => e.status === 'completed');
       const dots: { key: string; color: string }[] = [];
-      if (hasPlanned) dots.push({ key: 'planned', color: '#1565c0' });
+      if (hasPlanned) dots.push({ key: 'planned', color: '#004d99' });
       if (hasCompleted) dots.push({ key: 'completed', color: '#43a047' });
       map[dateStr] = { dots };
     }
-    // Met en évidence aujourd'hui
-    map[todayStr] = {
-      ...(map[todayStr] ?? {}),
-      selected: true,
-      selectedColor: '#e3f2fd',
-    };
+    map[selectedDate] = { ...(map[selectedDate] ?? {}), selected: true, selectedColor: '#d6e3ff' };
     return map;
-  }, [monthEntries, todayStr]);
+  }, [monthEntries, selectedDate]);
+
+  const avatarInitial = useMemo(() => {
+    const user = auth.currentUser;
+    const raw = (user?.displayName ?? user?.email ?? '').trim();
+    if (!raw) return '?';
+    return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
+  }, [auth.currentUser?.displayName, auth.currentUser?.email]);
+
+  const navigateToProfile = () => {
+    const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
+    parent?.navigate('Profil', undefined);
+  };
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#1565c0" />
+        <ActivityIndicator size="large" color="#004d99" />
       </View>
     );
   }
 
   return (
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Suivi nutritionnel</Text>
-
-      <View style={styles.todayHeaderTopRow}>
-        <Text style={styles.sectionTitle}>Aujourd'hui</Text>
-        <TouchableOpacity
-          style={styles.addMealInlineButton}
-          onPress={() => navigation.navigate('AddMeal', { date: todayStr })}
-        >
-          <Text style={styles.addMealInlineButtonText}>+ Ajouter un repas</Text>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+      {/* ── Top bar ── */}
+      <View style={styles.topBar}>
+        <Text style={styles.topTitle}>Suivi nutritionnel</Text>
+        <TouchableOpacity style={styles.avatarBtn} onPress={navigateToProfile} activeOpacity={0.8}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarInitial}>{avatarInitial}</Text>
+          )}
         </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        style={[styles.todayCard, todayConsumed >= calorieGoal && styles.todayCardAchieved]}
-        onPress={() => navigation.navigate('DayDetail', { date: todayStr })}
-        activeOpacity={0.8}
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.todayHeaderRow}>
-          <Text style={styles.todayLabel}>{formatDayLong(todayStr)}</Text>
-          {todayConsumed >= calorieGoal && (
-            <View style={styles.achievedBadge}>
-              <Text style={styles.achievedBadgeText}>Objectif atteint</Text>
+
+        {/* ── Hero KPI Card ── */}
+        <View style={styles.kpiCard}>
+          <View style={styles.kpiTop}>
+            <View style={styles.kpiLeft}>
+              <Text style={styles.kpiLabel}>Objectif Quotidien</Text>
+              {editingGoal ? (
+                <View style={styles.kpiEditRow}>
+                  <TextInput
+                    style={styles.kpiInput}
+                    value={goalInput}
+                    onChangeText={setGoalInput}
+                    keyboardType="number-pad"
+                    autoFocus
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.kpiUnit}>kcal</Text>
+                  <TouchableOpacity style={styles.kpiSaveBtn} onPress={saveGoal}>
+                    <Image source={iconCheckWhite} style={styles.kpiActionIcon} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.kpiSaveBtn, styles.kpiCancelBtn]} onPress={() => setEditingGoal(false)}>
+                    <Image source={iconCancelWhite} style={styles.kpiActionIcon} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.kpiNumberRow}>
+                  <Text style={styles.kpiNumber}>{calorieGoal.toLocaleString('fr-FR')}</Text>
+                  <Text style={styles.kpiUnit}>kcal</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
-        <View style={styles.todayStats}>
-          <Text style={styles.todayStat}>
-            <Text style={styles.todayStatLabel}>Prévu : </Text>
-            {todayPlanned} kcal
-          </Text>
-          <Text style={styles.todayStat}>
-            <Text style={styles.todayStatLabel}>Consommé : </Text>
-            {todayConsumed} kcal
-          </Text>
-        </View>
-        <View style={styles.todayKcalRow}>
-          <Text style={styles.todayKcal}>
-            {todayConsumed} / {calorieGoal} kcal
-            {todayPlanned > 0 && (
-              <Text style={styles.todayPrevu}> ({todayConsumed} / {todayPlanned} prévu)</Text>
+            {!editingGoal && (
+              <TouchableOpacity
+                style={styles.kpiEditBtn}
+                onPress={() => { setGoalInput(String(calorieGoal)); setEditingGoal(true); }}
+                activeOpacity={0.8}
+              >
+                <Image source={iconEdit} style={styles.kpiEditIcon} />
+              </TouchableOpacity>
             )}
+          </View>
+
+          <View style={styles.kpiProgressRow}>
+            <View style={styles.kpiProgressTrack}>
+              <View style={[styles.kpiProgressFill, { width: `${todayGoalPct * 100}%` as any }]} />
+            </View>
+            <Text style={styles.kpiPct}>{todayGoalPctDisplay}%</Text>
+          </View>
+
+          <Text style={styles.kpiConsumedHint}>
+            {todayConsumed.toLocaleString('fr-FR')} consommés
+            {todayPlanned > 0 ? ` · ${todayPlanned.toLocaleString('fr-FR')} prévus` : ''}
           </Text>
+        </View>
+
+        {/* ── Segmented control ── */}
+        <View style={styles.segmented}>
           <TouchableOpacity
-            style={styles.editGoalIconButton}
-            onPress={() => {
-              if (editingGoalFromTodayCard) {
-                setEditingGoalFromTodayCard(false);
-              } else {
-                setGoalInput(String(calorieGoal));
-                setEditingGoalFromTodayCard(true);
-              }
-            }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[styles.segmentBtn, viewMode === 'week' && styles.segmentBtnActive]}
+            onPress={() => setViewMode('week')}
+            activeOpacity={0.8}
           >
-            <Ionicons name="pencil" size={16} color="#1565c0" />
+            <Text style={[styles.segmentText, viewMode === 'week' && styles.segmentTextActive]}>Semaine</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentBtn, viewMode === 'month' && styles.segmentBtnActive]}
+            onPress={() => setViewMode('month')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentText, viewMode === 'month' && styles.segmentTextActive]}>Mois</Text>
           </TouchableOpacity>
         </View>
-        {editingGoalFromTodayCard && (
-          <View style={styles.todayGoalEditRow}>
-            <TextInput
-              style={styles.todayGoalInput}
-              value={goalInput}
-              onChangeText={setGoalInput}
-              keyboardType="number-pad"
-              placeholder="Objectif kcal"
-              placeholderTextColor="#999"
-            />
-            <TouchableOpacity style={styles.todayGoalAction} onPress={saveGoalFromTodayCard}>
-              <Ionicons name="checkmark" size={18} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.todayGoalAction, styles.todayGoalActionCancel]}
-              onPress={() => setEditingGoalFromTodayCard(false)}
-            >
-              <Ionicons name="close" size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        )}
-        {todayPlannedPreview.length > 0 && (
-          <View style={styles.todayPreview}>
-            {todayPlannedPreview.map((line) => (
-              <Text key={line} style={styles.todayPreviewLine} numberOfLines={1}>
-                {line}
-              </Text>
-            ))}
-          </View>
-        )}
-      </TouchableOpacity>
 
-      <View style={styles.tabsRow}>
-        <TouchableOpacity
-          style={[styles.tab, viewMode === 'week' && styles.tabActive]}
-          onPress={() => setViewMode('week')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.tabText, viewMode === 'week' && styles.tabTextActive]}>
-            Semaine
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, viewMode === 'month' && styles.tabActive]}
-          onPress={() => setViewMode('month')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.tabText, viewMode === 'month' && styles.tabTextActive]}>
-            Mois
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {viewMode === 'month' ? (
-        <>
-          <View style={styles.calendarCard}>
-            <Calendar
-              current={toDateString(monthCursor)}
-              firstDay={1}
-              hideExtraDays
-              enableSwipeMonths
-              markingType="multi-dot"
-              markedDates={markedDates as any}
-              onDayPress={(day) => navigation.navigate('DayDetail', { date: day.dateString })}
-              onMonthChange={(m) => setMonthCursor(new Date(m.year, m.month - 1, 1))}
-              theme={{
-                todayTextColor: '#1565c0',
-                selectedDayTextColor: '#1565c0',
-                arrowColor: '#1565c0',
-                textSectionTitleColor: '#666',
-                monthTextColor: '#333',
-              }}
-            />
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#1565c0' }]} />
-                <Text style={styles.legendText}>Prévu</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#43a047' }]} />
-                <Text style={styles.legendText}>Consommé</Text>
+        {viewMode === 'week' ? (
+          <>
+            {/* ── Week header ── */}
+            <View style={styles.weekHeader}>
+              <Text style={styles.weekTitle}>Aperçu Hebdomadaire</Text>
+              <View style={styles.weekNavRow}>
+                <TouchableOpacity onPress={() => setWeekStart((d) => addDays(d, -7))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Image source={iconLeft} style={styles.weekSwitchIcon} />
+                </TouchableOpacity>
+                <Text style={styles.weekLabel}>{weekLabel}</Text>
+                <TouchableOpacity onPress={() => setWeekStart((d) => addDays(d, 7))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Image source={iconRight} style={styles.weekSwitchIcon} />
+                </TouchableOpacity>
               </View>
             </View>
-          </View>
-        </>
-      ) : (
-        <>
-          <View style={styles.weekNavHeader}>
-            <TouchableOpacity onPress={goPrevWeek} style={styles.weekNavIconButton} activeOpacity={0.8}>
-              <Ionicons name="chevron-back" size={18} color="#1565c0" />
-            </TouchableOpacity>
-            <Text style={styles.weekNavLabel}>{weekLabel}</Text>
-            <TouchableOpacity onPress={goNextWeek} style={styles.weekNavIconButton} activeOpacity={0.8}>
-              <Ionicons name="chevron-forward" size={18} color="#1565c0" />
-            </TouchableOpacity>
-          </View>
 
-          <PanGestureHandler
-            onEnded={handleWeekSwipeEnded}
-            activeOffsetX={[-25, 25]}
-            failOffsetY={[-15, 15]}
-          >
-            <View>
-              {weekDays.map(({ dateString, label }) => {
-                const dayEntries = byDate.get(dateString) ?? [];
-                const planned = totalCalories(dayEntries, false);
-                const consumed = totalCalories(dayEntries, true);
-                const today = isToday(dateString);
-                const ratio = calorieGoal > 0 ? consumed / calorieGoal : 0;
-                const pct = Math.max(0, Math.min(1, ratio));
-                const over = ratio >= 1;
+            {/* ── Day pills ── */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
+              {weekDays.map(({ dateString }) => {
+                const d = new Date(dateString);
+                const dayAbbr = DAY_ABBR[d.getDay()];
+                const dayNum = d.getDate();
+                const today = selectedDate === dateString;
                 return (
                   <TouchableOpacity
                     key={dateString}
-                    style={[styles.dayRow, today && styles.dayRowToday]}
-                    onPress={() => navigation.navigate('DayDetail', { date: dateString })}
+                    style={[styles.pill, today && styles.pillActive]}
+                    onPress={() => setSelectedDate(dateString)}
                     activeOpacity={0.8}
                   >
-                    <View style={styles.dayRowLeft}>
-                      <Text style={styles.dayRowLabel}>{label}</Text>
-                      <View style={styles.dayProgressTrack}>
-                        <View
-                          style={[
-                            styles.dayProgressFill,
-                            over && styles.dayProgressFillOver,
-                            { width: `${pct * 100}%` },
-                          ]}
+                    <Text style={[styles.pillDayAbbr, today && styles.pillTextActive]}>{dayAbbr}</Text>
+                    <Text style={[styles.pillDayNum, today && styles.pillTextActive]}>{dayNum}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.selectedHeader}>
+              <Text style={styles.selectedHeaderTitle}>{selectedDayLabel}</Text>
+              <Text style={styles.selectedHeaderKcal}>
+                {selectedDayConsumed.toLocaleString('fr-FR')} / {calorieGoal.toLocaleString('fr-FR')} kcal
+              </Text>
+            </View>
+            <View style={styles.detailList}>
+              {selectedDayDetails.map((item) => {
+                const isLunch = item.mealType === 'lunch';
+                const isPlannedMeal = item.isPlannedOnly;
+                return (
+                  <TouchableOpacity
+                    key={item.mealType}
+                    style={[
+                      styles.mealCard,
+                      isLunch && styles.mealCardActive,
+                      isPlannedMeal && styles.mealCardPlanned,
+                    ]}
+                    onPress={() => navigation.navigate('DayDetail', { date: selectedDate })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.mealCardLeft}>
+                      <View style={[styles.mealIconWrap, isLunch && styles.mealIconWrapActive, isPlannedMeal && styles.mealIconWrapPlanned]}>
+                        <Image
+                          source={MEAL_META[item.mealType].icon}
+                          style={[styles.mealTypeIcon, isPlannedMeal && styles.mealTypeIconPlanned]}
                         />
                       </View>
+                      <View style={styles.mealTextWrap}>
+                        <Text style={[styles.mealLabel, isPlannedMeal && styles.mealLabelPlanned]}>
+                          {MEAL_META[item.mealType].label}
+                        </Text>
+                        <Text style={[styles.mealSubtitle, isPlannedMeal && styles.mealSubtitlePlanned]} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.dayRowStats}>
-                      <Text style={styles.dayRowKcal}>
-                        {consumed} / {calorieGoal} kcal
+                    <View style={styles.mealKcalWrap}>
+                      <Text style={[styles.mealKcal, isPlannedMeal && styles.mealLabelPlanned]}>
+                        {item.hasData ? item.calories.toLocaleString('fr-FR') : '—'}
                       </Text>
-                      {planned > 0 && (
-                        <Text style={styles.dayRowPrevu}>Prévu : {planned}</Text>
-                      )}
+                      <Text style={[styles.mealKcalUnit, isPlannedMeal && styles.mealSubtitlePlanned]}>KCAL</Text>
                     </View>
                   </TouchableOpacity>
                 );
               })}
             </View>
-          </PanGestureHandler>
-        </>
-      )}
-    </ScrollView>
+          </>
+        ) : (
+          <>
+            <View style={styles.calendarCard}>
+              <Calendar
+                current={toDateString(monthCursor)}
+                firstDay={1}
+                hideExtraDays
+                enableSwipeMonths
+                markingType="multi-dot"
+                markedDates={markedDates as any}
+                onDayPress={(day) => setSelectedDate(day.dateString)}
+                onMonthChange={(m) => setMonthCursor(new Date(m.year, m.month - 1, 1))}
+                theme={{
+                  todayTextColor: '#004d99',
+                  selectedDayTextColor: '#004d99',
+                  arrowColor: '#004d99',
+                  textSectionTitleColor: '#424752',
+                  monthTextColor: '#1a1c1c',
+                }}
+              />
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#004d99' }]} />
+                  <Text style={styles.legendText}>Prévu</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#43a047' }]} />
+                  <Text style={styles.legendText}>Consommé</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.selectedHeader}>
+              <Text style={styles.selectedHeaderTitle}>{selectedDayLabel}</Text>
+              <Text style={styles.selectedHeaderKcal}>
+                {selectedDayConsumed.toLocaleString('fr-FR')} / {calorieGoal.toLocaleString('fr-FR')} kcal
+              </Text>
+            </View>
+            <View style={styles.detailList}>
+              {selectedDayDetails.map((item) => {
+                const isLunch = item.mealType === 'lunch';
+                const isPlannedMeal = item.isPlannedOnly;
+                return (
+                  <TouchableOpacity
+                    key={item.mealType}
+                    style={[
+                      styles.mealCard,
+                      isLunch && styles.mealCardActive,
+                      isPlannedMeal && styles.mealCardPlanned,
+                    ]}
+                    onPress={() => navigation.navigate('DayDetail', { date: selectedDate })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.mealCardLeft}>
+                      <View style={[styles.mealIconWrap, isLunch && styles.mealIconWrapActive, isPlannedMeal && styles.mealIconWrapPlanned]}>
+                        <Image
+                          source={MEAL_META[item.mealType].icon}
+                          style={[styles.mealTypeIcon, isPlannedMeal && styles.mealTypeIconPlanned]}
+                        />
+                      </View>
+                      <View style={styles.mealTextWrap}>
+                        <Text style={[styles.mealLabel, isPlannedMeal && styles.mealLabelPlanned]}>
+                          {MEAL_META[item.mealType].label}
+                        </Text>
+                        <Text style={[styles.mealSubtitle, isPlannedMeal && styles.mealSubtitlePlanned]} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.mealKcalWrap}>
+                      <Text style={[styles.mealKcal, isPlannedMeal && styles.mealLabelPlanned]}>
+                        {item.hasData ? item.calories.toLocaleString('fr-FR') : '—'}
+                      </Text>
+                      <Text style={[styles.mealKcalUnit, isPlannedMeal && styles.mealSubtitlePlanned]}>KCAL</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    paddingBottom: 24,
+  safe: {
+    flex: 1,
+    backgroundColor: '#F9F9F9',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F9F9F9',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  semaineRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  todayHeaderTopRow: {
+  /* ── Top bar ── */
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
-  addMealInlineButton: {
-    backgroundColor: '#1565c0',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  addMealInlineButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  todayCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  todayCardAchieved: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#a5d6a7',
-  },
-  todayHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 10,
-  },
-  todayLabel: {
-    fontSize: 14,
-    color: '#666',
-    flex: 1,
-  },
-  achievedBadge: {
-    backgroundColor: '#43a047',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  achievedBadgeText: {
-    color: '#fff',
-    fontSize: 12,
+  topTitle: {
+    fontSize: 20,
     fontWeight: '700',
+    color: '#18181B',
+    letterSpacing: -0.5,
   },
-  todayStats: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 6,
-  },
-  todayStat: {
-    fontSize: 14,
-    color: '#333',
-  },
-  todayStatLabel: {
-    color: '#666',
-    fontWeight: '500',
-  },
-  todayKcal: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  todayKcalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  editGoalIconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#bbdefb',
+  avatarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1E293B',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: 'rgba(0,85,255,0.1)',
   },
-  todayPrevu: {
-    fontSize: 14,
-    fontWeight: 'normal',
-    color: '#666',
+  avatarImg: {
+    width: 40,
+    height: 40,
+    resizeMode: 'cover',
   },
-  todayGoalEditRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  avatarInitial: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  todayGoalInput: {
+  /* ── Scroll ── */
+  scroll: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#90caf9',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    backgroundColor: '#fff',
   },
-  todayGoalAction: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#2e7d32',
-    alignItems: 'center',
-    justifyContent: 'center',
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
+    gap: 24,
   },
-  todayGoalActionCancel: {
-    backgroundColor: '#9e9e9e',
+  /* ── KPI Hero Card ── */
+  kpiCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 28,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 2,
+    gap: 16,
   },
-  todayPreview: {
-    marginTop: 10,
+  kpiTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  kpiLeft: {
     gap: 4,
   },
-  todayPreviewLine: {
-    fontSize: 13,
-    color: '#666',
+  kpiLabel: {
+    fontSize: 12,
+    color: '#424752',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
+    fontWeight: '500',
   },
-  tabsRow: {
+  kpiNumberRow: {
     flexDirection: 'row',
-    backgroundColor: '#f2f2f2',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  kpiNumber: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    letterSpacing: -2.4,
+    lineHeight: 56,
+  },
+  kpiUnit: {
+    fontSize: 16,
+    color: '#424752',
+    alignSelf: 'flex-end',
+    marginBottom: 6,
+  },
+  kpiEditBtn: {
+    backgroundColor: '#E8E8E8',
+    borderRadius: 8,
+    padding: 8,
+  },
+  kpiEditIcon: {
+    width: 15,
+    height: 15,
+    resizeMode: 'contain',
+    tintColor: '#424752',
+  },
+  kpiEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  kpiInput: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    borderBottomWidth: 2,
+    borderBottomColor: '#004d99',
+    minWidth: 100,
+    padding: 0,
+  },
+  kpiSaveBtn: {
+    backgroundColor: '#004d99',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kpiCancelBtn: {
+    backgroundColor: '#9CA3AF',
+  },
+  kpiActionIcon: {
+    width: 16,
+    height: 16,
+    resizeMode: 'contain',
+    tintColor: '#FFFFFF',
+  },
+  kpiProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kpiProgressTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#E2E2E2',
+    borderRadius: 9999,
+    overflow: 'hidden',
+  },
+  kpiProgressFill: {
+    height: '100%',
+    backgroundColor: '#004d99',
+    borderRadius: 9999,
+  },
+  kpiPct: {
+    fontSize: 12,
+    color: '#004d99',
+    fontWeight: '600',
+    minWidth: 34,
+    textAlign: 'right',
+  },
+  kpiConsumedHint: {
+    fontSize: 12,
+    color: '#727783',
+    marginTop: -8,
+  },
+  /* ── Segmented control ── */
+  segmented: {
+    flexDirection: 'row',
+    backgroundColor: '#E8E8E8',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e6e6e6',
   },
-  tab: {
+  segmentBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: 'center',
   },
-  tabActive: {
-    backgroundColor: '#1565c0',
+  segmentBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  tabText: {
+  segmentText: {
     fontSize: 14,
+    color: '#424752',
+    fontWeight: '500',
+  },
+  segmentTextActive: {
+    color: '#004d99',
     fontWeight: '600',
-    color: '#666',
   },
-  tabTextActive: {
-    color: '#fff',
+  /* ── Week header ── */
+  weekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  calendarCard: {
-    backgroundColor: '#fff',
+  weekTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  weekNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weekLabel: {
+    fontSize: 13,
+    color: '#424752',
+    fontWeight: '500',
+  },
+  weekSwitchIcon: {
+    width: 14,
+    height: 14,
+    resizeMode: 'contain',
+    tintColor: '#004d99',
+  },
+  /* ── Day pills ── */
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 4,
+  },
+  pill: {
+    width: 56,
+    paddingVertical: 14,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-    padding: 10,
-    marginBottom: 20,
+    backgroundColor: '#F3F3F3',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pillActive: {
+    backgroundColor: '#004d99',
+  },
+  pillDayAbbr: {
+    fontSize: 10,
+    color: '#424752',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+    opacity: 0.6,
+  },
+  pillDayNum: {
+    fontSize: 18,
+    color: '#424752',
+    fontWeight: '600',
+  },
+  pillTextActive: {
+    color: '#FFFFFF',
+    opacity: 1,
+  },
+  /* ── Detail list ── */
+  selectedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginTop: 4,
+  },
+  selectedHeaderTitle: {
+    fontSize: 14,
+    color: '#004d99',
+    textTransform: 'uppercase',
+    letterSpacing: 1.4,
+    fontWeight: '600',
+  },
+  selectedHeaderKcal: {
+    fontSize: 12,
+    color: '#424752',
+    fontWeight: '500',
+  },
+  detailList: {
+    gap: 12,
+  },
+  mealCard: {
+    backgroundColor: '#F3F3F3',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mealCardActive: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: 'rgba(0,77,153,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    padding: 18,
+  },
+  mealCardPlanned: {
+    opacity: 0.75,
+  },
+  mealCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 8,
+    minWidth: 0,
+  },
+  mealTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mealIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealIconWrapActive: {
+    backgroundColor: '#D6E3FF',
+  },
+  mealIconWrapPlanned: {
+    backgroundColor: '#E2E2E2',
+  },
+  mealTypeIcon: {
+    width: 18,
+    height: 18,
+    resizeMode: 'contain',
+    tintColor: '#004d99',
+  },
+  mealTypeIconPlanned: {
+    tintColor: '#6B7280',
+  },
+  mealLabel: {
+    fontSize: 14,
+    color: '#1a1c1c',
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  mealLabelPlanned: {
+    color: '#424752',
+  },
+  mealSubtitle: {
+    fontSize: 12,
+    color: '#424752',
+    marginTop: 1,
+    flexShrink: 1,
+  },
+  mealSubtitlePlanned: {
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  mealKcalWrap: {
+    alignItems: 'flex-end',
+    marginLeft: 8,
+    flexShrink: 0,
+    minWidth: 56,
+  },
+  mealKcal: {
+    fontSize: 28,
+    color: '#1a1c1c',
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  mealKcalUnit: {
+    fontSize: 10,
+    color: '#424752',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '600',
+  },
+  /* ── Calendar (month view) ── */
+  calendarCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   legendRow: {
     flexDirection: 'row',
     gap: 16,
-    marginTop: 10,
+    marginTop: 12,
+    paddingHorizontal: 4,
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   legendText: {
     fontSize: 12,
-    color: '#666',
-  },
-  weekHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 12,
-  },
-  weekNav: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  weekNavText: {
-    fontSize: 14,
-    color: '#1565c0',
-  },
-  weekNavHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  weekNavIconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dbe8f8',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  weekNavLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
-    textTransform: 'capitalize',
-  },
-  dayRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  dayRowLeft: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  dayRowToday: {
-    borderColor: '#1565c0',
-    backgroundColor: '#e3f2fd',
-  },
-  dayRowLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  dayProgressTrack: {
-    height: 6,
-    backgroundColor: '#eee',
-    borderRadius: 999,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  dayProgressFill: {
-    height: '100%',
-    backgroundColor: '#1565c0',
-    borderRadius: 999,
-  },
-  dayProgressFillOver: {
-    backgroundColor: '#c62828',
-  },
-  dayRowStats: {
-    alignItems: 'flex-end',
-  },
-  dayRowKcal: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '600',
-  },
-  dayRowPrevu: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 2,
+    color: '#424752',
   },
 });
 

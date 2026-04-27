@@ -41,6 +41,7 @@ const ProfileScreen = () => {
   const objective = useUserStore((state) => state.objective);
   const setObjective = useUserStore((state) => state.setObjective);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
+  const pruneFavorites = useUserStore((state) => state.pruneFavorites);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const route = useRoute<RouteProp<RootTabParamList, 'Profil'>>();
   const scrollRef = useRef<ScrollView>(null);
@@ -51,9 +52,9 @@ const ProfileScreen = () => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(auth.currentUser?.photoURL ?? null);
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [calorieGoalSaving, setCalorieGoalSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('objectif');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('favoris');
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [settingsView, setSettingsView] = useState<'main' | 'username' | 'email' | 'password'>('main');
+  const [settingsView, setSettingsView] = useState<'main' | 'username' | 'email' | 'password' | 'ingredients' | 'tags'>('main');
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -64,6 +65,17 @@ const ProfileScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [showAllFavorites, setShowAllFavorites] = useState(false);
+  const [customIngredients, setCustomIngredients] = useState<string[]>([]);
+  const [newIngredientName, setNewIngredientName] = useState('');
+  const [ingredientSaving, setIngredientSaving] = useState(false);
+  const [editingIngredient, setEditingIngredient] = useState<string | null>(null);
+  const [editingIngredientDraft, setEditingIngredientDraft] = useState('');
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [newTagName, setNewTagName] = useState('');
+  const [tagSaving, setTagSaving] = useState(false);
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingTagDraft, setEditingTagDraft] = useState('');
 
   const user = auth.currentUser;
   const email = user?.email ?? '';
@@ -82,6 +94,12 @@ const ProfileScreen = () => {
     if (!creation) return '—';
     return new Date(creation).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   }, [user?.metadata.creationTime]);
+  const favoritePreviewRecipes = useMemo(
+    () => favoriteRecipes.slice(0, 4),
+    [favoriteRecipes],
+  );
+  const visibleFavoriteRecipes = showAllFavorites ? favoriteRecipes : favoritePreviewRecipes;
+  const hasMoreFavorites = favoriteRecipes.length > 4;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -90,11 +108,13 @@ const ProfileScreen = () => {
         setCalorieGoal(val);
         setCalorieGoalDraft(val);
         setAvatarUrl(p?.avatarUrl ?? auth.currentUser?.photoURL ?? null);
+        setCustomIngredients(p?.customIngredients ?? []);
+        setCustomTags(p?.customRecipeTags ?? []);
       });
     }, []),
   );
 
-  const openSettingsView = (view: 'username' | 'email' | 'password') => {
+  const openSettingsView = (view: 'username' | 'email' | 'password' | 'ingredients' | 'tags') => {
     setEditError('');
     setNewName(auth.currentUser?.displayName ?? '');
     setNewEmail(auth.currentUser?.email ?? '');
@@ -102,6 +122,110 @@ const ProfileScreen = () => {
     setNewPassword('');
     setConfirmPassword('');
     setSettingsView(view);
+  };
+
+  const saveCustomIngredients = async (next: string[]) => {
+    setIngredientSaving(true);
+    try {
+      await updateUserProfile({ customIngredients: next });
+      setCustomIngredients(next);
+    } catch {
+      Alert.alert('Erreur', "Impossible d'enregistrer les ingrédients.");
+    } finally {
+      setIngredientSaving(false);
+    }
+  };
+
+  const handleAddCustomIngredient = async () => {
+    const normalized = newIngredientName.trim();
+    if (!normalized) return;
+    if (customIngredients.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+      setNewIngredientName('');
+      return;
+    }
+    const next = [...customIngredients, normalized].sort((a, b) => a.localeCompare(b, 'fr'));
+    await saveCustomIngredients(next);
+    setNewIngredientName('');
+  };
+
+  const handleRemoveCustomIngredient = async (name: string) => {
+    const next = customIngredients.filter((item) => item !== name);
+    await saveCustomIngredients(next);
+  };
+
+  const startRenameIngredient = (name: string) => {
+    setEditingIngredient(name);
+    setEditingIngredientDraft(name);
+  };
+
+  const handleRenameCustomIngredient = async () => {
+    if (!editingIngredient) return;
+    const normalized = editingIngredientDraft.trim();
+    if (!normalized) return;
+    if (
+      customIngredients.some(
+        (item) => item.toLowerCase() === normalized.toLowerCase() && item !== editingIngredient,
+      )
+    ) {
+      Alert.alert('Doublon', 'Cet ingrédient existe déjà.');
+      return;
+    }
+    const next = customIngredients
+      .map((item) => (item === editingIngredient ? normalized : item))
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    await saveCustomIngredients(next);
+    setEditingIngredient(null);
+    setEditingIngredientDraft('');
+  };
+
+  const saveCustomTags = async (next: string[]) => {
+    setTagSaving(true);
+    try {
+      await updateUserProfile({ customRecipeTags: next });
+      setCustomTags(next);
+    } catch {
+      Alert.alert('Erreur', "Impossible d'enregistrer les tags.");
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const handleAddCustomTag = async () => {
+    const normalized = newTagName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!normalized) return;
+    if (customTags.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+      setNewTagName('');
+      return;
+    }
+    const next = [...customTags, normalized].sort((a, b) => a.localeCompare(b, 'fr'));
+    await saveCustomTags(next);
+    setNewTagName('');
+  };
+
+  const handleRemoveCustomTag = async (tag: string) => {
+    const next = customTags.filter((item) => item !== tag);
+    await saveCustomTags(next);
+  };
+
+  const startRenameTag = (tag: string) => {
+    setEditingTag(tag);
+    setEditingTagDraft(tag.replace(/_/g, ' '));
+  };
+
+  const handleRenameCustomTag = async () => {
+    if (!editingTag) return;
+    const normalized = editingTagDraft.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!normalized) return;
+    if (customTags.some((item) => item.toLowerCase() === normalized.toLowerCase() && item !== editingTag)) {
+      Alert.alert('Doublon', 'Ce tag existe déjà.');
+      return;
+    }
+    const next = customTags
+      .map((item) => (item === editingTag ? normalized : item))
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    await saveCustomTags(next);
+    setEditingTag(null);
+    setEditingTagDraft('');
   };
 
   const handleUpdateName = async () => {
@@ -228,10 +352,11 @@ const ProfileScreen = () => {
   useEffect(() => {
     const loadFavorites = async () => {
       const all = await getAllRecipes();
+      pruneFavorites(all.map((r) => r.id));
       setFavoriteRecipes(all.filter((r) => favoriteRecipeIds.includes(r.id)));
     };
     loadFavorites();
-  }, [favoriteRecipeIds]);
+  }, [favoriteRecipeIds, pruneFavorites]);
 
   useEffect(() => {
     if (!route.params?.reTapToken) return;
@@ -241,6 +366,8 @@ const ProfileScreen = () => {
       setCalorieGoal(val);
       setCalorieGoalDraft(val);
       setAvatarUrl(p?.avatarUrl ?? auth.currentUser?.photoURL ?? null);
+      setCustomIngredients(p?.customIngredients ?? []);
+      setCustomTags(p?.customRecipeTags ?? []);
     });
   }, [route.params?.reTapToken]);
 
@@ -252,6 +379,10 @@ const ProfileScreen = () => {
   const iconObjEqui = require('../../assets/figma/profil/icon-equal.png');
   const iconDisconnect = require('../../assets/figma/profil/icon-disconnect.png');
   const iconArrowBack = require('../../assets/figma/profil/arrow-back.png');
+  const iconEdit = require('../../assets/figma/profil/icon-edit.png');
+  const iconDelete = require('../../assets/figma/home/icon-trash.png');
+  const iconCancelWhite = require('../../assets/figma/suivi/icon-cancel-white.png');
+  const iconCheckWhite = require('../../assets/figma/suivi/icon-check-white.png');
 
   if (settingsVisible) {
     const settingsHeader = (title: string, onBack: () => void) => (
@@ -368,6 +499,192 @@ const ProfileScreen = () => {
       );
     }
 
+    if (settingsView === 'ingredients') {
+      return (
+        <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+          {settingsHeader('Mes ingrédients', () => setSettingsView('main'))}
+          <ScrollView contentContainerStyle={styles.settingsContainer} keyboardShouldPersistTaps="handled">
+            <Text style={styles.editHint}>Ces ingrédients sont personnels à votre compte.</Text>
+            <View style={styles.ingredientRowEditor}>
+              <TextInput
+                style={styles.ingredientInput}
+                value={newIngredientName}
+                onChangeText={setNewIngredientName}
+                placeholder="Ex: Oignon rouge"
+                placeholderTextColor="#9CA3AF"
+              />
+              <TouchableOpacity
+                style={[styles.ingredientAddBtn, (ingredientSaving || !newIngredientName.trim()) && styles.disabled]}
+                onPress={handleAddCustomIngredient}
+                disabled={ingredientSaving || !newIngredientName.trim()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.ingredientAddBtnText}>Créer</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsGroup}>
+              {customIngredients.length === 0 ? (
+                <View style={styles.settingsItem}>
+                  <Text style={styles.settingsSubLabel}>Aucun ingrédient personnalisé.</Text>
+                </View>
+              ) : (
+                customIngredients.map((name, index) => (
+                  <React.Fragment key={name}>
+                    <View style={styles.settingsItem}>
+                      <View style={styles.settingsItemLeft}>
+                        {editingIngredient === name ? (
+                          <View style={styles.settingsIconSpacer} />
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.settingsIcon, styles.editIconWrap]}
+                            onPress={() => startRenameIngredient(name)}
+                            activeOpacity={0.7}
+                          >
+                            <Image source={iconEdit} style={styles.settingsActionIcon} />
+                          </TouchableOpacity>
+                        )}
+                        {editingIngredient === name ? (
+                          <TextInput
+                            style={styles.inlineRenameInput}
+                            value={editingIngredientDraft}
+                            onChangeText={setEditingIngredientDraft}
+                            placeholder="Renommer l'ingrédient"
+                            placeholderTextColor="#9CA3AF"
+                            autoFocus
+                          />
+                        ) : (
+                          <Text style={styles.settingsLabel}>{name}</Text>
+                        )}
+                      </View>
+                      {editingIngredient === name ? (
+                        <View style={styles.inlineActions}>
+                          <TouchableOpacity
+                            style={styles.inlineIconBtnCancel}
+                            onPress={() => { setEditingIngredient(null); setEditingIngredientDraft(''); }}
+                            activeOpacity={0.8}
+                          >
+                            <Image source={iconCancelWhite} style={styles.inlineIconBtnImage} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.inlineIconBtnCheck, (ingredientSaving || !editingIngredientDraft.trim()) && styles.disabled]}
+                            onPress={handleRenameCustomIngredient}
+                            activeOpacity={0.8}
+                            disabled={ingredientSaving || !editingIngredientDraft.trim()}
+                          >
+                            <Image source={iconCheckWhite} style={styles.inlineIconBtnImage} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={styles.inlineIconBtnDelete} onPress={() => handleRemoveCustomIngredient(name)} activeOpacity={0.8}>
+                          <Image source={iconDelete} style={styles.inlineDeleteIcon} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {index < customIngredients.length - 1 ? <View style={styles.settingsDivider} /> : null}
+                  </React.Fragment>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      );
+    }
+
+    if (settingsView === 'tags') {
+      return (
+        <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+          {settingsHeader('Mes tags', () => setSettingsView('main'))}
+          <ScrollView contentContainerStyle={styles.settingsContainer} keyboardShouldPersistTaps="handled">
+            <Text style={styles.editHint}>Ces tags sont personnels à votre compte.</Text>
+            <View style={styles.ingredientRowEditor}>
+              <TextInput
+                style={styles.ingredientInput}
+                value={newTagName}
+                onChangeText={setNewTagName}
+                placeholder="Ex: snack_proteine"
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={[styles.ingredientAddBtn, (tagSaving || !newTagName.trim()) && styles.disabled]}
+                onPress={handleAddCustomTag}
+                disabled={tagSaving || !newTagName.trim()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.ingredientAddBtnText}>Créer</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsGroup}>
+              {customTags.length === 0 ? (
+                <View style={styles.settingsItem}>
+                  <Text style={styles.settingsSubLabel}>Aucun tag personnalisé.</Text>
+                </View>
+              ) : (
+                customTags.map((tag, index) => (
+                  <React.Fragment key={tag}>
+                    <View style={styles.settingsItem}>
+                      <View style={styles.settingsItemLeft}>
+                        {editingTag === tag ? (
+                          <View style={styles.settingsIconSpacer} />
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.settingsIcon, styles.editIconWrap]}
+                            onPress={() => startRenameTag(tag)}
+                            activeOpacity={0.7}
+                          >
+                            <Image source={iconEdit} style={styles.settingsActionIcon} />
+                          </TouchableOpacity>
+                        )}
+                        {editingTag === tag ? (
+                          <TextInput
+                            style={styles.inlineRenameInput}
+                            value={editingTagDraft}
+                            onChangeText={setEditingTagDraft}
+                            placeholder="Renommer le tag"
+                            placeholderTextColor="#9CA3AF"
+                            autoFocus
+                            autoCapitalize="none"
+                          />
+                        ) : (
+                          <Text style={styles.settingsLabel}>{tag.replace(/_/g, ' ')}</Text>
+                        )}
+                      </View>
+                      {editingTag === tag ? (
+                        <View style={styles.inlineActions}>
+                          <TouchableOpacity
+                            style={styles.inlineIconBtnCancel}
+                            onPress={() => { setEditingTag(null); setEditingTagDraft(''); }}
+                            activeOpacity={0.8}
+                          >
+                            <Image source={iconCancelWhite} style={styles.inlineIconBtnImage} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.inlineIconBtnCheck, (tagSaving || !editingTagDraft.trim()) && styles.disabled]}
+                            onPress={handleRenameCustomTag}
+                            activeOpacity={0.8}
+                            disabled={tagSaving || !editingTagDraft.trim()}
+                          >
+                            <Image source={iconCheckWhite} style={styles.inlineIconBtnImage} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={styles.inlineIconBtnDelete} onPress={() => handleRemoveCustomTag(tag)} activeOpacity={0.8}>
+                          <Image source={iconDelete} style={styles.inlineDeleteIcon} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {index < customTags.length - 1 ? <View style={styles.settingsDivider} /> : null}
+                  </React.Fragment>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.safe} edges={['left', 'right']}>
         {settingsHeader('Réglages', () => { setSettingsVisible(false); setSettingsView('main'); })}
@@ -409,6 +726,32 @@ const ProfileScreen = () => {
                   <Ionicons name="key-outline" size={18} color="#2563EB" />
                 </View>
                 <Text style={styles.settingsLabel}>Modifier le mot de passe</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+            </TouchableOpacity>
+            <View style={styles.settingsDivider} />
+            <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('ingredients')}>
+              <View style={styles.settingsItemLeft}>
+                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="restaurant-outline" size={18} color="#2563EB" />
+                </View>
+                <View>
+                  <Text style={styles.settingsLabel}>Mes ingrédients</Text>
+                  <Text style={styles.settingsSubLabel}>{customIngredients.length} élément(s)</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+            </TouchableOpacity>
+            <View style={styles.settingsDivider} />
+            <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSettingsView('tags')}>
+              <View style={styles.settingsItemLeft}>
+                <View style={[styles.settingsIcon, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="pricetag-outline" size={18} color="#2563EB" />
+                </View>
+                <View>
+                  <Text style={styles.settingsLabel}>Mes tags</Text>
+                  <Text style={styles.settingsSubLabel}>{customTags.length} élément(s)</Text>
+                </View>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
             </TouchableOpacity>
@@ -542,7 +885,7 @@ const ProfileScreen = () => {
           <ProfileStatCard
             iconSource={iconStatFavorites}
             label="Favoris"
-            value={String(favoriteRecipeIds.length)}
+            value={String(favoriteRecipes.length)}
             variant={activeTab === 'favoris' ? 'highlight' : 'default'}
             onPress={() => setActiveTab('favoris')}
           />
@@ -626,9 +969,11 @@ const ProfileScreen = () => {
           <View style={styles.card}>
             <View style={styles.favHeader}>
               <SectionHeader title="Recettes favorites" />
-              <TouchableOpacity onPress={() => navigation.navigate('Recettes', { screen: 'Recipes' })} activeOpacity={0.8}>
-                <Text style={styles.favLink}>Voir tout</Text>
-              </TouchableOpacity>
+              {hasMoreFavorites ? (
+                <TouchableOpacity onPress={() => setShowAllFavorites((prev) => !prev)} activeOpacity={0.8}>
+                  <Text style={styles.favLink}>{showAllFavorites ? 'Voir moins' : 'Voir tout'}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {favoriteRecipes.length === 0 ? (
@@ -638,21 +983,18 @@ const ProfileScreen = () => {
                 <Text style={styles.emptyFavoritesSub}>Appuie sur l'étoile d'une recette pour l'ajouter ici</Text>
               </View>
             ) : (
-              <FlatList
-                data={favoriteRecipes}
-                keyExtractor={(item) => item.id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.favSlider}
-                renderItem={({ item }) => (
+              <View style={styles.favGrid}>
+                {visibleFavoriteRecipes.map((item) => (
                   <RecipeMiniCard
+                    key={item.id}
+                    style={styles.favGridItem}
                     title={item.title}
                     calories={item.calories}
                     image={item.image}
                     onPress={() => navigation.navigate('Recettes', { screen: 'RecipeDetail', params: item })}
                   />
-                )}
-              />
+                ))}
+              </View>
             )}
           </View>
         )}
@@ -700,16 +1042,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F7',
   },
   settingsBackBtn: {
-    width: 72,
-    alignItems: 'flex-start',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   settingsTopTitle: {
@@ -720,7 +1067,7 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   settingsTopRightSpacer: {
-    width: 72,
+    width: 36,
   },
   settingsContainer: {
     paddingHorizontal: 16,
@@ -770,9 +1117,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   arrowBackIcon: {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
     resizeMode: 'contain',
+    tintColor: '#111827',
   },
   settingsSectionLabel: {
     fontSize: 11,
@@ -786,6 +1134,103 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94A3B8',
     marginTop: 1,
+  },
+  settingsActionIcon: {
+    width: 18,
+    height: 18,
+    resizeMode: 'contain',
+    tintColor: '#1D4ED8',
+  },
+  editIconWrap: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  settingsIconSpacer: {
+    width: 34,
+    height: 34,
+  },
+  inlineRenameInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  inlineActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 12,
+  },
+  inlineIconBtnCancel: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#94A3B8',
+  },
+  inlineIconBtnCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563EB',
+  },
+  inlineIconBtnDelete: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE2E2',
+  },
+  inlineIconBtnImage: {
+    width: 14,
+    height: 14,
+    resizeMode: 'contain',
+    tintColor: '#FFFFFF',
+  },
+  inlineDeleteIcon: {
+    width: 14,
+    height: 14,
+    resizeMode: 'contain',
+    tintColor: '#DC2626',
+  },
+  ingredientRowEditor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  ingredientInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  ingredientAddBtn: {
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#004D99',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  ingredientAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   editHint: {
     fontSize: 13,
@@ -1013,10 +1458,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#2563EB',
   },
-  favSlider: {
+  favGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingTop: 12,
     paddingBottom: 6,
     gap: 12,
+  },
+  favGridItem: {
+    width: '48%',
   },
   emptyFavorites: {
     alignItems: 'center',

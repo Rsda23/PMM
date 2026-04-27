@@ -4,6 +4,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const iconDifficulty = require('../../assets/figma/recette/icon-difficulty.png');
 const iconStar = require('../../assets/figma/recette/icon-star.png');
+const iconStarWhite = require('../../assets/figma/recette/star-white.png');
 
 const TAG_LABELS: Record<string, string> = {
   perte_poids: 'Perte de poids',
@@ -26,6 +27,8 @@ type RecipeCardProps = {
   image?: string | null;
   rating?: number;
   difficulty?: string;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
   onPress?: () => void;
 };
 
@@ -37,6 +40,8 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
   image,
   rating,
   difficulty,
+  isFavorite,
+  onToggleFavorite,
   onPress,
 }) => {
   const displayTags = (tags ?? []).slice(0, 2);
@@ -56,6 +61,21 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
             <Image source={iconStar} style={styles.starIcon} />
             <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
           </View>
+        )}
+        {onToggleFavorite && (
+          <TouchableOpacity
+            style={styles.favoriteBtn}
+            onPress={(event) => {
+              event.stopPropagation();
+              onToggleFavorite();
+            }}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={iconStarWhite}
+              style={[styles.favoriteIcon, isFavorite && styles.favoriteIconActive]}
+            />
+          </TouchableOpacity>
         )}
       </View>
 
@@ -125,7 +145,7 @@ const styles = StyleSheet.create({
   ratingBadge: {
     position: 'absolute',
     top: 16,
-    right: 16,
+    left: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -143,6 +163,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#1a1c1c',
+  },
+  favoriteBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteIcon: {
+    width: 16,
+    height: 16,
+    resizeMode: 'contain',
+    tintColor: 'rgba(255,255,255,0.7)',
+  },
+  favoriteIconActive: {
+    tintColor: '#FACC15',
   },
   content: {
     padding: 20,

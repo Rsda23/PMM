@@ -7,13 +7,14 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
-import RecipeCard from '../components/RecipeCard';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
 import type { RootTabParamList } from '../components/Navbar';
 import { getAllRecipes, type Recipe } from '../services/api/recipesApi';
@@ -47,6 +48,18 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'equilibre', label: 'Équilibré' },
   { key: 'vegetarien', label: 'Végétarien' },
 ];
+const TAG_LABELS: Record<string, string> = {
+  perte_poids: 'Perte de poids',
+  prise_masse: 'Prise de masse',
+  equilibre: 'Équilibré',
+  vegetarien: 'Végétarien',
+  riche_proteine: 'Protéines',
+  rapide: 'Rapide',
+  sans_gluten: 'Sans gluten',
+  faible_carb: 'Faible carb',
+  petit_dej: 'Petit-déj',
+  energie: 'Énergie',
+};
 
 const RecipesScreen = () => {
   const navigation = useNavigation<RecipesNavProp>();
@@ -59,20 +72,23 @@ const RecipesScreen = () => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     auth.currentUser?.photoURL ?? null,
   );
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const objective = useUserStore((state) => state.objective);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const toggleFavorite = useUserStore((state) => state.toggleFavorite);
+  const pruneFavorites = useUserStore((state) => state.pruneFavorites);
 
   const loadData = useCallback(async () => {
     const [data, profile] = await Promise.all([getAllRecipes(), getUserProfile()]);
     setRecipes(data);
+    pruneFavorites(data.map((recipe) => recipe.id));
     if (profile?.avatarUrl) {
       setAvatarUrl(profile.avatarUrl);
     } else if (auth.currentUser?.photoURL) {
       setAvatarUrl(auth.currentUser.photoURL);
     }
-  }, []);
+  }, [pruneFavorites]);
 
   useEffect(() => {
     loadData();
@@ -133,20 +149,45 @@ const RecipesScreen = () => {
     return displayedRecipes.filter((r) => r.id !== featuredRecipe.id);
   }, [displayedRecipes, featuredRecipe]);
 
-  const isFeaturedFav = featuredRecipe
-    ? favoriteRecipeIds.includes(featuredRecipe.id)
-    : false;
-
   const navigateToProfile = () => {
     const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
     parent?.navigate('Profil', undefined);
   };
 
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (offsetY > 320 && !showScrollTop) {
+      setShowScrollTop(true);
+    } else if (offsetY <= 320 && showScrollTop) {
+      setShowScrollTop(false);
+    }
+  };
+
   const showHero = !!featuredRecipe && activeFilter === 'all' && !searchQuery.trim();
-  const sectionLabel =
-    showHero
-      ? 'Populaire en ce moment'
-      : `${listRecipes.length} recette${listRecipes.length !== 1 ? 's' : ''}`;
+  const heroRecipes = useMemo(
+    () => (showHero && featuredRecipe ? [featuredRecipe, ...listRecipes] : displayedRecipes),
+    [showHero, featuredRecipe, listRecipes, displayedRecipes],
+  );
+  const sectionLabel = `${heroRecipes.length} recette${heroRecipes.length !== 1 ? 's' : ''}`;
+  const getRecipeBadgeLabel = useCallback(
+    (recipe: Recipe) => {
+      if (recipe.difficulty?.trim()) return recipe.difficulty.trim();
+
+      const tags = recipe.tags ?? [];
+      if (tags.length === 0) return 'Recette';
+
+      const preferredTag =
+        activeFilter !== 'all' &&
+        activeFilter !== 'recommendation' &&
+        activeFilter !== 'favoris' &&
+        tags.includes(activeFilter)
+          ? activeFilter
+          : tags.find((tag) => TAG_LABELS[tag]) ?? tags[0];
+
+      return TAG_LABELS[preferredTag] ?? preferredTag.replace(/_/g, ' ');
+    },
+    [activeFilter],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
@@ -171,6 +212,8 @@ const RecipesScreen = () => {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         {/* ── Search + Create ── */}
         <View style={styles.searchSection}>
@@ -217,90 +260,86 @@ const RecipesScreen = () => {
           })}
         </ScrollView>
 
-        {/* ── Hero "Recette du jour" ── */}
-        {showHero && featuredRecipe && (
-          <TouchableOpacity
-            style={styles.hero}
-            onPress={() => navigation.navigate('RecipeDetail', featuredRecipe)}
-            activeOpacity={0.92}
-          >
-            {featuredRecipe.image ? (
-              <Image
-                source={{ uri: featuredRecipe.image }}
-                style={styles.heroImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.heroImage, styles.heroPlaceholder]} />
-            )}
-            <LinearGradient
-              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.82)']}
-              locations={[0, 0.4, 1]}
-              style={styles.heroGradient}
-            >
-              <View style={styles.heroContent}>
-                <View style={styles.heroLeft}>
-                  <Text style={styles.heroLabel}>Recette du jour</Text>
-                  <Text style={styles.heroTitle} numberOfLines={3}>
-                    {featuredRecipe.title}
-                  </Text>
-                  <View style={styles.heroMeta}>
-                    <View style={styles.heroMetaItem}>
-                      <Image source={iconTime} style={styles.heroMetaIcon} />
-                      <Text style={styles.heroMetaText}>15 min</Text>
-                    </View>
-                    <View style={styles.heroMetaItem}>
-                      <Image source={iconFire} style={styles.heroMetaIcon} />
-                      <Text style={styles.heroMetaText}>{featuredRecipe.calories} kcal</Text>
-                    </View>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.heroBookmark}
-                  onPress={() => toggleFavorite(featuredRecipe.id)}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={iconStarWhite}
-                    style={[styles.heroBookmarkIcon, isFeaturedFav && styles.heroBookmarkIconActive]}
-                  />
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-
         {/* ── Section header ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{sectionLabel}</Text>
-          {showHero && (
-            <TouchableOpacity activeOpacity={0.7}>
-              <Text style={styles.seeAll}>Voir tout</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* ── Recipe list ── */}
         <View style={styles.listWrapper}>
-          {listRecipes.length === 0 ? (
+          {heroRecipes.length === 0 ? (
             <Text style={styles.empty}>Aucune recette ne correspond.</Text>
           ) : (
-            listRecipes.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                id={recipe.id}
-                title={recipe.title}
-                calories={recipe.calories}
-                tags={recipe.tags}
-                image={recipe.image}
-                rating={recipe.rating}
-                difficulty={recipe.difficulty}
-                onPress={() => navigation.navigate('RecipeDetail', recipe)}
-              />
-            ))
+            heroRecipes.map((recipe) => {
+              const isFavorite = favoriteRecipeIds.includes(recipe.id);
+              return (
+                <TouchableOpacity
+                  key={recipe.id}
+                  style={[styles.hero, styles.heroListItem]}
+                  onPress={() => navigation.navigate('RecipeDetail', recipe)}
+                  activeOpacity={0.92}
+                >
+                  {recipe.image ? (
+                    <Image
+                      source={{ uri: recipe.image }}
+                      style={styles.heroImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.heroImage, styles.heroPlaceholder]} />
+                  )}
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.82)']}
+                    locations={[0, 0.4, 1]}
+                    style={styles.heroGradient}
+                  >
+                    <TouchableOpacity
+                      style={styles.heroBookmark}
+                      onPress={() => toggleFavorite(recipe.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Image
+                        source={iconStarWhite}
+                        style={[styles.heroBookmarkIcon, isFavorite && styles.heroBookmarkIconActive]}
+                      />
+                    </TouchableOpacity>
+                    <View style={styles.heroContent}>
+                      <View style={styles.heroLeft}>
+                        <Text style={styles.heroLabel}>
+                          {getRecipeBadgeLabel(recipe)}
+                        </Text>
+                        <Text style={styles.heroTitle} numberOfLines={3}>
+                          {recipe.title}
+                        </Text>
+                        <View style={styles.heroMeta}>
+                          <View style={styles.heroMetaItem}>
+                            <Image source={iconTime} style={styles.heroMetaIcon} />
+                            <Text style={styles.heroMetaText}>15 min</Text>
+                          </View>
+                          <View style={styles.heroMetaItem}>
+                            <Image source={iconFire} style={styles.heroMetaIcon} />
+                            <Text style={styles.heroMetaText}>{recipe.calories} kcal</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
       </ScrollView>
+
+      {showScrollTop && (
+        <TouchableOpacity
+          style={styles.scrollTopButton}
+          activeOpacity={0.9}
+          onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        >
+          <Text style={styles.scrollTopButtonText}>↑</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };
@@ -369,7 +408,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingLeft: 16,
     paddingRight: 16,
-    paddingVertical: 18,
+    minHeight: 56,
   },
   searchIconImg: {
     width: 18,
@@ -381,8 +420,11 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
+    lineHeight: 22,
     color: '#18181B',
-    padding: 0,
+    paddingVertical: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   createBtn: {
     flexDirection: 'row',
@@ -431,11 +473,13 @@ const styles = StyleSheet.create({
   },
   /* ── Hero card ── */
   hero: {
-    marginHorizontal: 24,
     marginTop: 24,
     borderRadius: 12,
     overflow: 'hidden',
     height: 320,
+  },
+  heroListItem: {
+    marginTop: 16,
   },
   heroImage: {
     width: '100%',
@@ -500,21 +544,24 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
   },
   heroBookmark: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   heroBookmarkIcon: {
-    width: 20,
-    height: 20,
+    width: 16,
+    height: 16,
     resizeMode: 'contain',
     tintColor: 'rgba(255,255,255,0.7)',
   },
   heroBookmarkIconActive: {
-    tintColor: '#FFFFFF',
+    tintColor: '#FACC15',
   },
   /* ── Section header ── */
   sectionHeader: {
@@ -543,6 +590,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
     fontStyle: 'italic',
+  },
+  scrollTopButton: {
+    position: 'absolute',
+    right: 24,
+    bottom: 32,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#004D99',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  scrollTopButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    lineHeight: 22,
+    fontWeight: '800',
   },
 });
 
