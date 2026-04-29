@@ -13,8 +13,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
+import type { RootTabParamList } from '../components/Navbar';
 import { getAllRecipes, type Recipe } from '../services/api/recipesApi';
 import { addMealPlan, MEAL_TYPE_LABELS, type MealType } from '../services/api/mealPlansApi';
 import { auth } from '../services/firebase/firebaseConfig';
@@ -46,7 +48,7 @@ const iconSearch = require('../../assets/figma/navbar/tab-search.png');
 const iconCheckWhite = require('../../assets/figma/suivi/icon-check-white.png');
 
 const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { date, mealType: initialMealType } = route.params;
+  const { date, mealType: initialMealType, source } = route.params;
   const targetMealType: MealType = initialMealType ?? 'lunch';
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +140,20 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
     return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
   }, [auth.currentUser?.displayName, auth.currentUser?.email]);
 
+  const handleBack = () => {
+    if (source === 'home') {
+      navigation.getParent()?.dispatch(
+        CommonActions.navigate({
+          name: 'Accueil' as keyof RootTabParamList,
+          params: { reTapToken: Date.now() },
+        }),
+      );
+      return;
+    }
+
+    navigation.goBack();
+  };
+
   const handleAddSelected = async () => {
     const toAdd = selectedRecipes;
     if (toAdd.length === 0) return;
@@ -156,7 +172,7 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
         }),
       );
       await Promise.all(promises);
-      navigation.goBack();
+      handleBack();
     } catch (e) {
       console.warn('addMealPlan error:', e);
       Alert.alert('Erreur', 'Impossible d\'ajouter les repas.');
@@ -192,7 +208,7 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.topBar}>
         <View style={styles.topLeft}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack} activeOpacity={0.7}>
             <Image source={iconArrowBack} style={styles.backIcon} />
           </TouchableOpacity>
           <Text style={styles.topTitle}>Ajouter un repas</Text>

@@ -410,7 +410,12 @@ const HomeScreen = () => {
               key={mealType}
               style={styles.mealEmptySlot}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('Suivi', { screen: 'AddMeal', params: { date: today, mealType } })}
+              onPress={() =>
+                navigation.navigate('Suivi', {
+                  screen: 'AddMeal',
+                  params: { date: today, mealType, source: 'home' },
+                })
+              }
             >
               <View style={styles.addMealButton}>
                 <Image source={iconPlusWhite} style={styles.addMealPlusIcon} />
@@ -428,7 +433,12 @@ const HomeScreen = () => {
                 <Text style={styles.mealType}>{MEAL_TYPE_LABELS[mealType]}</Text>
                 <TouchableOpacity
                   style={styles.mealSlotAdd}
-                  onPress={() => navigation.navigate('Suivi', { screen: 'AddMeal', params: { date: today, mealType } })}
+                  onPress={() =>
+                    navigation.navigate('Suivi', {
+                      screen: 'AddMeal',
+                      params: { date: today, mealType, source: 'home' },
+                    })
+                  }
                 >
                   <Image source={iconPlusBlue} style={styles.mealSlotAddIcon} />
                 </TouchableOpacity>

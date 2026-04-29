@@ -7,7 +7,11 @@ import AddMealScreen from '../screens/AddMealScreen';
 export type SuiviStackParamList = {
   SuiviMain: { reTapToken?: number } | undefined;
   DayDetail: { date: string }; // "YYYY-MM-DD"
-  AddMeal: { date: string; mealType?: import('../services/api/mealPlansApi').MealType };
+  AddMeal: {
+    date: string;
+    mealType?: import('../services/api/mealPlansApi').MealType;
+    source?: 'home' | 'suivi';
+  };
 };
 
 const Stack = createNativeStackNavigator<SuiviStackParamList>();

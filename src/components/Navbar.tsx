@@ -73,10 +73,12 @@ const Navbar = () => {
       <Tab.Screen
         name="Suivi"
         component={SuiviStack}
+        options={{
+          popToTopOnBlur: true,
+          unmountOnBlur: true,
+        }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const isActive = navigation.isFocused();
-            if (!isActive) return;
             e.preventDefault();
             navigation.navigate('Suivi', {
               screen: 'SuiviMain',
