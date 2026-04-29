@@ -191,7 +191,7 @@ const ProfileScreen = () => {
   };
 
   const handleAddCustomTag = async () => {
-    const normalized = newTagName.trim().toLowerCase().replace(/\s+/g, '_');
+    const normalized = newTagName.trim().replace(/\s+/g, '_');
     if (!normalized) return;
     if (customTags.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
       setNewTagName('');
@@ -214,7 +214,7 @@ const ProfileScreen = () => {
 
   const handleRenameCustomTag = async () => {
     if (!editingTag) return;
-    const normalized = editingTagDraft.trim().toLowerCase().replace(/\s+/g, '_');
+    const normalized = editingTagDraft.trim().replace(/\s+/g, '_');
     if (!normalized) return;
     if (customTags.some((item) => item.toLowerCase() === normalized.toLowerCase() && item !== editingTag)) {
       Alert.alert('Doublon', 'Ce tag existe déjà.');

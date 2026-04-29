@@ -126,11 +126,13 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const addCustomTag = () => {
-    const normalized = customTagInput.trim().toLowerCase().replace(/\s+/g, '_');
+    const normalized = customTagInput.trim().replace(/\s+/g, '_');
     if (!normalized) return;
-    setTags((current) => (current.includes(normalized) ? current : [...current, normalized]));
+    setTags((current) =>
+      current.some((tag) => tag.toLowerCase() === normalized.toLowerCase()) ? current : [...current, normalized],
+    );
     setCustomTagLibrary((current) => {
-      if (current.includes(normalized)) return current;
+      if (current.some((tag) => tag.toLowerCase() === normalized.toLowerCase())) return current;
       const next = [...current, normalized];
       updateUserProfile({ customRecipeTags: next }).catch(() => {
         // no-op UI; save best effort
