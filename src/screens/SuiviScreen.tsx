@@ -100,8 +100,13 @@ const SuiviScreen = () => {
     } else {
       setGoalInput(String(DEFAULT_CALORIE_GOAL));
     }
-    if (profile?.avatarUrl) setAvatarUrl(profile.avatarUrl);
-    else if (auth.currentUser?.photoURL) setAvatarUrl(auth.currentUser.photoURL);
+    const nextAvatar = profile?.avatarUrl ?? auth.currentUser?.photoURL ?? null;
+    if (nextAvatar) {
+      Image.prefetch(nextAvatar).catch(() => {
+        // best effort cache warmup
+      });
+    }
+    setAvatarUrl(nextAvatar);
   }, []);
 
   const loadWeek = useCallback(async () => {
@@ -251,6 +256,11 @@ const SuiviScreen = () => {
     return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
   }, [auth.currentUser?.displayName, auth.currentUser?.email]);
 
+  const avatarSource = useMemo(() => {
+    if (!avatarUrl) return null;
+    return { uri: avatarUrl, cache: 'force-cache' as const };
+  }, [avatarUrl]);
+
   const navigateToProfile = () => {
     const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
     parent?.navigate('Profil', undefined);
@@ -270,8 +280,8 @@ const SuiviScreen = () => {
       <View style={styles.topBar}>
         <Text style={styles.topTitle}>Suivi nutritionnel</Text>
         <TouchableOpacity style={styles.avatarBtn} onPress={navigateToProfile} activeOpacity={0.8}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+          {avatarSource ? (
+            <Image source={avatarSource} style={styles.avatarImg} />
           ) : (
             <Text style={styles.avatarInitial}>{avatarInitial}</Text>
           )}

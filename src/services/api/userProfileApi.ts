@@ -11,26 +11,62 @@ export type UserProfile = {
 };
 
 const COLLECTION = 'users';
+const PROFILE_CACHE_TTL_MS = 60_000;
+let profileCache:
+  | {
+      uid: string;
+      fetchedAt: number;
+      data: UserProfile | null;
+    }
+  | null = null;
+let profileInFlight: Promise<UserProfile | null> | null = null;
+
+const clearProfileCache = () => {
+  profileCache = null;
+  profileInFlight = null;
+};
 
 export const getUserProfile = async (): Promise<UserProfile | null> => {
   const uid = auth.currentUser?.uid;
   if (!uid) return null;
-  try {
-    const ref = doc(db, COLLECTION, uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return null;
-    const data = snap.data();
-    return {
-      objective: data.objective ?? undefined,
-      calorieGoal: data.calorieGoal ?? undefined,
-      avatarUrl: data.avatarUrl ?? undefined,
-      customRecipeTags: Array.isArray(data.customRecipeTags) ? data.customRecipeTags : undefined,
-      customIngredients: Array.isArray(data.customIngredients) ? data.customIngredients : undefined,
-    };
-  } catch (e) {
-    console.warn('getUserProfile failed:', e);
-    return null;
+
+  if (
+    profileCache &&
+    profileCache.uid === uid &&
+    Date.now() - profileCache.fetchedAt < PROFILE_CACHE_TTL_MS
+  ) {
+    return profileCache.data;
   }
+
+  if (profileInFlight) return profileInFlight;
+
+  profileInFlight = (async () => {
+    try {
+      const ref = doc(db, COLLECTION, uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        profileCache = { uid, fetchedAt: Date.now(), data: null };
+        return null;
+      }
+      const data = snap.data();
+      const profile: UserProfile = {
+        objective: data.objective ?? undefined,
+        calorieGoal: data.calorieGoal ?? undefined,
+        avatarUrl: data.avatarUrl ?? undefined,
+        customRecipeTags: Array.isArray(data.customRecipeTags) ? data.customRecipeTags : undefined,
+        customIngredients: Array.isArray(data.customIngredients) ? data.customIngredients : undefined,
+      };
+      profileCache = { uid, fetchedAt: Date.now(), data: profile };
+      return profile;
+    } catch (e) {
+      console.warn('getUserProfile failed:', e);
+      return null;
+    } finally {
+      profileInFlight = null;
+    }
+  })();
+
+  return profileInFlight;
 };
 
 export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<void> => {
@@ -45,4 +81,5 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   if (updates.customIngredients !== undefined) payload.customIngredients = updates.customIngredients;
   if (Object.keys(payload).length === 0) return;
   await setDoc(ref, payload, { merge: true });
+  clearProfileCache();
 };

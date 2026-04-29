@@ -33,6 +33,20 @@ export type MealPlanEntry = {
 };
 
 const COLLECTION = 'mealPlans';
+const MEAL_PLANS_CACHE_TTL_MS = 20_000;
+let mealPlansCache:
+  | {
+      uid: string;
+      fetchedAt: number;
+      data: MealPlanEntry[];
+    }
+  | null = null;
+let mealPlansInFlight: Promise<MealPlanEntry[]> | null = null;
+
+const clearMealPlansCache = () => {
+  mealPlansCache = null;
+  mealPlansInFlight = null;
+};
 
 function getWeekBounds(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
@@ -74,20 +88,40 @@ export async function getMealPlansForDateRange(
   if (!uid) return [];
   const startStr = typeof startDate === 'string' ? startDate : toDateString(startDate);
   const endStr = typeof endDate === 'string' ? endDate : toDateString(endDate);
-  try {
-    const q = query(
-      collection(db, COLLECTION),
-      where('userId', '==', uid),
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs
-      .map(parseEntry)
-      .filter((e) => e.date >= startStr && e.date <= endStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  } catch (e) {
-    console.warn('getMealPlansForDateRange failed:', e);
-    return [];
-  }
+
+  const getAllForUser = async (): Promise<MealPlanEntry[]> => {
+    if (
+      mealPlansCache &&
+      mealPlansCache.uid === uid &&
+      Date.now() - mealPlansCache.fetchedAt < MEAL_PLANS_CACHE_TTL_MS
+    ) {
+      return mealPlansCache.data;
+    }
+
+    if (mealPlansInFlight) return mealPlansInFlight;
+
+    mealPlansInFlight = (async () => {
+      try {
+        const q = query(collection(db, COLLECTION), where('userId', '==', uid));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs
+          .map(parseEntry)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        mealPlansCache = { uid, fetchedAt: Date.now(), data };
+        return data;
+      } catch (e) {
+        console.warn('getMealPlansForDateRange failed:', e);
+        return [];
+      } finally {
+        mealPlansInFlight = null;
+      }
+    })();
+
+    return mealPlansInFlight;
+  };
+
+  const allEntries = await getAllForUser();
+  return allEntries.filter((e) => e.date >= startStr && e.date <= endStr);
 }
 
 export async function getMealPlansForWeek(weekStart: Date): Promise<MealPlanEntry[]> {
@@ -125,6 +159,7 @@ export async function addMealPlan(params: {
     status: 'planned',
     createdAt: serverTimestamp(),
   });
+  clearMealPlansCache();
   return ref.id;
 }
 
@@ -137,6 +172,7 @@ export async function updateMealPlanStatus(id: string, status: MealPlanStatus): 
     throw new Error('Entrée introuvable.');
   }
   await updateDoc(ref, { status });
+  clearMealPlansCache();
 }
 
 export async function deleteMealPlan(id: string): Promise<void> {
@@ -148,6 +184,7 @@ export async function deleteMealPlan(id: string): Promise<void> {
     throw new Error('Entrée introuvable.');
   }
   await deleteDoc(ref);
+  clearMealPlansCache();
 }
 
 export function groupEntriesByDate(entries: MealPlanEntry[]): Map<string, MealPlanEntry[]> {

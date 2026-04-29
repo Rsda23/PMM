@@ -46,6 +46,21 @@ export type Recipe = {
   rating?: number;
 };
 
+const RECIPES_CACHE_TTL_MS = 60_000;
+let recipesCache:
+  | {
+      uid: string;
+      fetchedAt: number;
+      data: Recipe[];
+    }
+  | null = null;
+let recipesInFlight: Promise<Recipe[]> | null = null;
+
+const clearRecipesCache = () => {
+  recipesCache = null;
+  recipesInFlight = null;
+};
+
 /** Document Firestore "recipes" (README) : name, ingredients, calories, tags */
 type RecipeDocument = {
   name?: string;
@@ -76,48 +91,66 @@ export const getAllRecipes = async (): Promise<Recipe[]> => {
   const uid = auth.currentUser?.uid;
   if (!uid) return [];
 
-  try {
-    const snapshot = await getDocs(collection(db, 'recipes'));
-    return snapshot.docs.map((docSnap) => {
-      const data = docSnap.data() as RecipeDocument;
-      return {
-        id: docSnap.id,
-        title: data.name ?? data.title ?? '',
-        calories: data.calories ?? 0,
-        protein: typeof data.protein === 'number' ? data.protein : undefined,
-        carbs: typeof data.carbs === 'number' ? data.carbs : undefined,
-        fats: typeof data.fats === 'number' ? data.fats : undefined,
-        tags: mapTagsForCurrentUser(Array.isArray(data.tags) ? data.tags : [], uid),
-        ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
-        ingredientsDetailed: Array.isArray(data.ingredientsDetailed)
-          ? data.ingredientsDetailed
-              .map((item) => {
-                if (!item || typeof item !== 'object') return null;
-                const name = typeof item.name === 'string' ? item.name.trim() : '';
-                if (!name) return null;
-                return {
-                  name,
-                  amount: typeof item.amount === 'string' ? item.amount : undefined,
-                  unit: typeof item.unit === 'string' ? item.unit : undefined,
-                };
-              })
-              .filter((item): item is IngredientItem => !!item)
-          : undefined,
-        instructions: Array.isArray(data.instructions)
-          ? data.instructions
-          : data.instructions
-          ? [data.instructions]
-          : undefined,
-        image: data.image,
-        createdBy: data.createdBy ?? null,
-        difficulty: data.difficulty,
-        rating: data.rating,
-      };
-    });
-  } catch (e) {
-    console.warn('Firestore recipes read failed:', e);
-    return [];
+  if (
+    recipesCache &&
+    recipesCache.uid === uid &&
+    Date.now() - recipesCache.fetchedAt < RECIPES_CACHE_TTL_MS
+  ) {
+    return recipesCache.data;
   }
+
+  if (recipesInFlight) return recipesInFlight;
+
+  recipesInFlight = (async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'recipes'));
+      const data = snapshot.docs.map((docSnap) => {
+        const docData = docSnap.data() as RecipeDocument;
+        return {
+          id: docSnap.id,
+          title: docData.name ?? docData.title ?? '',
+          calories: docData.calories ?? 0,
+          protein: typeof docData.protein === 'number' ? docData.protein : undefined,
+          carbs: typeof docData.carbs === 'number' ? docData.carbs : undefined,
+          fats: typeof docData.fats === 'number' ? docData.fats : undefined,
+          tags: mapTagsForCurrentUser(Array.isArray(docData.tags) ? docData.tags : [], uid),
+          ingredients: Array.isArray(docData.ingredients) ? docData.ingredients : [],
+          ingredientsDetailed: Array.isArray(docData.ingredientsDetailed)
+            ? docData.ingredientsDetailed
+                .map((item) => {
+                  if (!item || typeof item !== 'object') return null;
+                  const name = typeof item.name === 'string' ? item.name.trim() : '';
+                  if (!name) return null;
+                  return {
+                    name,
+                    amount: typeof item.amount === 'string' ? item.amount : undefined,
+                    unit: typeof item.unit === 'string' ? item.unit : undefined,
+                  };
+                })
+                .filter((item): item is IngredientItem => !!item)
+            : undefined,
+          instructions: Array.isArray(docData.instructions)
+            ? docData.instructions
+            : docData.instructions
+            ? [docData.instructions]
+            : undefined,
+          image: docData.image,
+          createdBy: docData.createdBy ?? null,
+          difficulty: docData.difficulty,
+          rating: docData.rating,
+        };
+      });
+      recipesCache = { uid, fetchedAt: Date.now(), data };
+      return data;
+    } catch (e) {
+      console.warn('Firestore recipes read failed:', e);
+      return [];
+    } finally {
+      recipesInFlight = null;
+    }
+  })();
+
+  return recipesInFlight;
 };
 
 export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
@@ -143,6 +176,7 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
   }
 
   await addDoc(collection(db, 'recipes'), payload);
+  clearRecipesCache();
 };
 
 export const updateRecipe = async (
@@ -177,6 +211,7 @@ export const updateRecipe = async (
   if (updates.image !== undefined) payload.image = updates.image;
 
   await updateDoc(ref, payload);
+  clearRecipesCache();
 };
 
 export const deleteRecipe = async (id: string) => {
@@ -194,4 +229,5 @@ export const deleteRecipe = async (id: string) => {
     throw new Error('Tu ne peux supprimer que tes propres recettes.');
   }
   await deleteDoc(ref);
+  clearRecipesCache();
 };

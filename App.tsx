@@ -26,19 +26,17 @@ export default function App() {
         setAssetsReady(true);
       });
 
-    const timer = setTimeout(() => {
-      try {
-        unsubscribe = subscribeToAuthState((u) => {
-          setUser(u);
-          setAuthReady(true);
-        });
-      } catch (e) {
-        console.warn('Auth subscription failed:', e);
+    try {
+      unsubscribe = subscribeToAuthState((u) => {
+        setUser(u);
         setAuthReady(true);
-      }
-    }, 100);
+      });
+    } catch (e) {
+      console.warn('Auth subscription failed:', e);
+      setAuthReady(true);
+    }
+
     return () => {
-      clearTimeout(timer);
       if (unsubscribe) unsubscribe();
     };
   }, []);

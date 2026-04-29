@@ -75,7 +75,6 @@ const Navbar = () => {
         component={SuiviStack}
         options={{
           popToTopOnBlur: true,
-          unmountOnBlur: true,
         }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
