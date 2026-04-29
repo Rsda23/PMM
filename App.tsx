@@ -6,24 +6,35 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { User } from 'firebase/auth';
 import { subscribeToAuthState } from './src/services/firebase/auth';
+import { preloadAppAssets } from './src/assets/preloadAssets';
 import Navbar from './src/components/Navbar';
 import AuthStack from './src/navigation/AuthStack';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(false);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+
+    preloadAppAssets()
+      .catch((e) => {
+        console.warn('Asset preload failed:', e);
+      })
+      .finally(() => {
+        setAssetsReady(true);
+      });
+
     const timer = setTimeout(() => {
       try {
         unsubscribe = subscribeToAuthState((u) => {
           setUser(u);
-          setLoading(false);
+          setAuthReady(true);
         });
       } catch (e) {
         console.warn('Auth subscription failed:', e);
-        setLoading(false);
+        setAuthReady(true);
       }
     }, 100);
     return () => {
@@ -32,7 +43,7 @@ export default function App() {
     };
   }, []);
 
-  if (loading) {
+  if (!authReady || !assetsReady) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color="#1565c0" />

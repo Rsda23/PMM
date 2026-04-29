@@ -1,0 +1,78 @@
+import { Asset } from 'expo-asset';
+
+const APP_ASSETS = [
+  require('../../assets/figma/forgot-password/back-arrow.png'),
+  require('../../assets/figma/forgot-password/forgot-password-hero.png'),
+  require('../../assets/figma/home/icon-check.png'),
+  require('../../assets/figma/home/icon-plus-blue.png'),
+  require('../../assets/figma/home/icon-plus-white.png'),
+  require('../../assets/figma/home/icon-trash.png'),
+  require('../../assets/figma/login/google-logo.png'),
+  require('../../assets/figma/login/hero-lock-bg.png'),
+  require('../../assets/figma/login/icon-arrow-right.png'),
+  require('../../assets/figma/login/icon-email.png'),
+  require('../../assets/figma/login/icon-password.png'),
+  require('../../assets/figma/navbar/tab-home.png'),
+  require('../../assets/figma/navbar/tab-profil.png'),
+  require('../../assets/figma/navbar/tab-recettes.png'),
+  require('../../assets/figma/navbar/tab-search.png'),
+  require('../../assets/figma/navbar/tab-suivi.png'),
+  require('../../assets/figma/profil/arrow-back.png'),
+  require('../../assets/figma/profil/icon-check-white.png'),
+  require('../../assets/figma/profil/icon-disconnect.png'),
+  require('../../assets/figma/profil/icon-edit.png'),
+  require('../../assets/figma/profil/icon-equal.png'),
+  require('../../assets/figma/profil/icon-favoris-white.png'),
+  require('../../assets/figma/profil/icon-favoris.png'),
+  require('../../assets/figma/profil/icon-mode-white.png'),
+  require('../../assets/figma/profil/icon-mode.png'),
+  require('../../assets/figma/profil/icon-objectif-white.png'),
+  require('../../assets/figma/profil/icon-objectif.png'),
+  require('../../assets/figma/profil/icon-pdm.png'),
+  require('../../assets/figma/profil/icon-pdp.png'),
+  require('../../assets/figma/profil/icon-setting.png'),
+  require('../../assets/figma/profil/icon-star.png'),
+  require('../../assets/figma/recette/icon-cal.png'),
+  require('../../assets/figma/recette/icon-difficulty.png'),
+  require('../../assets/figma/recette/icon-fire.png'),
+  require('../../assets/figma/recette/icon-photo.png'),
+  require('../../assets/figma/recette/icon-star.png'),
+  require('../../assets/figma/recette/icon-time-grey.png'),
+  require('../../assets/figma/recette/icon-time.png'),
+  require('../../assets/figma/recette/plus.png'),
+  require('../../assets/figma/recette/star-white.png'),
+  require('../../assets/figma/register/back-arrow.png'),
+  require('../../assets/figma/register/register-hero.png'),
+  require('../../assets/figma/setting/icon-check.png'),
+  require('../../assets/figma/setting/icon-condi.png'),
+  require('../../assets/figma/setting/icon-conf.png'),
+  require('../../assets/figma/setting/icon-info.png'),
+  require('../../assets/figma/setting/icon-mail.png'),
+  require('../../assets/figma/setting/icon-notif.png'),
+  require('../../assets/figma/setting/icon-pass.png'),
+  require('../../assets/figma/setting/icon-prod.png'),
+  require('../../assets/figma/setting/icon-tag.png'),
+  require('../../assets/figma/setting/icon-theme.png'),
+  require('../../assets/figma/setting/icon-user.png'),
+  require('../../assets/figma/setting/icon-version.png'),
+  require('../../assets/figma/suivi/back-arrow.png'),
+  require('../../assets/figma/suivi/icon-cancel-white.png'),
+  require('../../assets/figma/suivi/icon-check-white.png'),
+  require('../../assets/figma/suivi/icon-col.png'),
+  require('../../assets/figma/suivi/icon-din.png'),
+  require('../../assets/figma/suivi/icon-edit.png'),
+  require('../../assets/figma/suivi/icon-matin.png'),
+  require('../../assets/figma/suivi/icon-midi.png'),
+  require('../../assets/figma/suivi/left.png'),
+  require('../../assets/figma/suivi/right.png'),
+];
+
+let preloadPromise: Promise<void> | null = null;
+
+export const preloadAppAssets = async () => {
+  if (!preloadPromise) {
+    preloadPromise = Promise.all(APP_ASSETS.map((asset) => Asset.loadAsync(asset))).then(() => undefined);
+  }
+
+  return preloadPromise;
+};
