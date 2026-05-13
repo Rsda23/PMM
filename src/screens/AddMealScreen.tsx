@@ -18,7 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SuiviStackParamList } from '../navigation/SuiviStack';
 import type { RootTabParamList } from '../components/Navbar';
 import { getAllRecipes, type Recipe } from '../services/api/recipesApi';
-import { addMealPlan, MEAL_TYPE_LABELS, type MealType } from '../services/api/mealPlansApi';
+import { addMealPlan, type MealType } from '../services/api/mealPlansApi';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile } from '../services/api/userProfileApi';
 
@@ -58,6 +58,9 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
   const [saving, setSaving] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(auth.currentUser?.photoURL ?? null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  /** aligné sur RecipesScreen : tout le catalogue vs recettes créées par l’utilisateur */
+  const [showPublicRecipes, setShowPublicRecipes] = useState(true);
+  const toggleLockRef = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
@@ -70,6 +73,14 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
   }, []);
 
   const filtered = useMemo(() => {
+    const uid = auth.currentUser?.uid ?? null;
+    let base = recipes;
+    if (!showPublicRecipes) {
+      base = uid
+        ? recipes.filter((r) => r.createdBy != null && r.createdBy === uid)
+        : [];
+    }
+
     const normalize = (value: string) =>
       value
         .toLowerCase()
@@ -83,7 +94,7 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
         ? []
         : MEAL_TYPE_TAG_ALIASES[selectedMealFilter].map(normalize);
 
-    return recipes.filter((r) => {
+    return base.filter((r) => {
       const normalizedTags = (r.tags ?? []).map(normalize);
       const hasMealTypeTag =
         selectedMealFilter === 'all'
@@ -99,7 +110,7 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
       const tagMatch = normalizedTags.some((tag) => tag.includes(query));
       return titleMatch || tagMatch;
     });
-  }, [recipes, search, selectedMealFilter]);
+  }, [recipes, search, selectedMealFilter, showPublicRecipes]);
 
   const selectedRecipes = useMemo(
     () => recipes.filter((r) => selectedIds.has(r.id)),
@@ -273,7 +284,37 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
         </ScrollView>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recettes suggérées</Text>
+          <Text style={styles.sectionTitle} numberOfLines={2}>
+            Recettes
+          </Text>
+          <TouchableOpacity
+            style={styles.glassToggleWrap}
+            onPress={() => {
+              if (toggleLockRef.current) return;
+              toggleLockRef.current = true;
+              setShowPublicRecipes((prev) => !prev);
+              setSelectedIds(new Set());
+              setTimeout(() => {
+                toggleLockRef.current = false;
+              }, 400);
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: showPublicRecipes }}
+            accessibilityLabel={
+              showPublicRecipes
+                ? 'Affichage : toutes les recettes, catalogue inclus'
+                : 'Affichage : uniquement mes créations'
+            }
+            accessibilityHint="Active pour voir aussi les recettes du catalogue partagé. Désactive pour ne voir que tes recettes."
+          >
+            <Text style={styles.glassToggleLabel} numberOfLines={2}>
+              {showPublicRecipes ? 'Catalogue inclus' : 'Mes créations'}
+            </Text>
+            <View style={[styles.glassTrack, showPublicRecipes && styles.glassTrackOn]}>
+              <View style={[styles.glassThumb, showPublicRecipes && styles.glassThumbOn]} />
+            </View>
+          </TouchableOpacity>
         </View>
 
         {filtered.length === 0 ? (
@@ -492,15 +533,69 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
     marginTop: 4,
   },
   sectionTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 32,
     fontWeight: '700',
     color: '#1A1C1C',
     lineHeight: 38,
+  },
+  glassToggleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  glassToggleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#424752',
+    letterSpacing: 0.2,
+    textAlign: 'right',
+    maxWidth: 108,
+    lineHeight: 14,
+  },
+  glassTrack: {
+    width: 36,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  glassTrackOn: {
+    backgroundColor: '#FC6018',
+  },
+  glassThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+    alignSelf: 'flex-start',
+  },
+  glassThumbOn: {
+    alignSelf: 'flex-end',
   },
   recipeRow: {
     flexDirection: 'row',
