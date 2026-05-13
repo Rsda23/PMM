@@ -7,7 +7,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "import:themealdb": "node ./scripts/import-themealdb-to-firestore.mjs"
+    "import:themealdb": "node ./scripts/import-themealdb-to-firestore.mjs",
+    "extract:ingredients": "node ./scripts/extract-ingredients-from-recipes.mjs",
+    "seed:ingredients": "node ./scripts/seed-ingredients-catalog.mjs",
+    "migrate:recipes": "node ./scripts/migrate-recipes-to-catalog.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,8 +18,38 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootTabParamList } from '../components/Navbar';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
 import { createRecipe, getAllRecipes, updateRecipe, type IngredientItem } from '../services/api/recipesApi';
+import { getAllIngredients, type Ingredient } from '../services/api/ingredientsApi';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile, updateUserProfile } from '../services/api/userProfileApi';
+import { computeMacrosFromIngredients, isUsableEstimate } from '../utils/nutrition';
+import { enrichIngredientsForRecipe } from '../utils/ingredientParsing';
+
+const normalizeIngredientName = (raw: string): string =>
+  raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const parseAmountValue = (raw: string | undefined): number | undefined => {
+  if (!raw) return undefined;
+  const cleaned = raw.replace(',', '.').trim();
+  const simple = /^\d+(\.\d+)?$/;
+  const fraction = /^(\d+)\s*\/\s*(\d+)$/;
+  const mixed = /^(\d+)\s+(\d+)\s*\/\s*(\d+)$/;
+  if (simple.test(cleaned)) {
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  const fMatch = fraction.exec(cleaned);
+  if (fMatch && Number(fMatch[2]) !== 0) return Number(fMatch[1]) / Number(fMatch[2]);
+  const mMatch = mixed.exec(cleaned);
+  if (mMatch && Number(mMatch[3]) !== 0) {
+    return Number(mMatch[1]) + Number(mMatch[2]) / Number(mMatch[3]);
+  }
+  return undefined;
+};
 
 type Props = NativeStackScreenProps<RecipesStackParamList, 'CreateRecipe'>;
 const iconArrowBack = require('../../assets/figma/profil/arrow-back.png');
@@ -44,10 +74,15 @@ const TAG_LABELS: Record<(typeof TAG_OPTIONS)[number], string> = {
 const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
   const existingRecipe = route.params?.recipe;
   const isEditMode = !!existingRecipe;
-  const initialDetailedIngredients: IngredientItem[] =
-    existingRecipe?.ingredientsDetailed?.length
-      ? existingRecipe.ingredientsDetailed
-      : (existingRecipe?.ingredients ?? []).map((item) => ({ name: item }));
+  // Migration progressive : on parse les `ingredients` (strings legacy) en
+  // structures `{ name, amount, unit, amountValue }` dès l'ouverture, même
+  // sans catalogue. Le matching avec `ingredientId` est complété juste après
+  // (cf. effet plus bas), une fois `catalogIngredients` chargé.
+  const initialDetailedIngredients: IngredientItem[] = enrichIngredientsForRecipe(
+    existingRecipe?.ingredientsDetailed,
+    existingRecipe?.ingredients,
+    [],
+  );
 
   const [title, setTitle] = useState(existingRecipe?.title ?? '');
   const [image, setImage] = useState(existingRecipe?.image ?? '');
@@ -69,6 +104,7 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
   const [tags, setTags] = useState<string[]>(existingRecipe?.tags ?? []);
   const [customTagLibrary, setCustomTagLibrary] = useState<string[]>([]);
   const [userIngredientLibrary, setUserIngredientLibrary] = useState<string[]>([]);
+  const [catalogIngredients, setCatalogIngredients] = useState<Ingredient[]>([]);
   const [customTagInput, setCustomTagInput] = useState('');
   const [showCreateTagInput, setShowCreateTagInput] = useState(false);
   const [ingredientsDetailed, setIngredientsDetailed] = useState<IngredientItem[]>(
@@ -90,9 +126,77 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
     [customTagLibrary],
   );
   const ingredientLibrary = useMemo(
-    () => Array.from(new Set([...userIngredientLibrary, ...knownIngredientNames])),
-    [userIngredientLibrary, knownIngredientNames],
+    () =>
+      Array.from(
+        new Set([
+          ...userIngredientLibrary,
+          ...knownIngredientNames,
+          ...catalogIngredients.map((ing) => ing.name),
+        ]),
+      ),
+    [userIngredientLibrary, knownIngredientNames, catalogIngredients],
   );
+
+  const catalogByNormalizedName = useMemo(() => {
+    const map = new Map<string, Ingredient>();
+    catalogIngredients.forEach((ing) => {
+      const key = normalizeIngredientName(ing.name);
+      if (key) map.set(key, ing);
+      (ing.aliases ?? []).forEach((alias) => {
+        const aliasKey = normalizeIngredientName(alias);
+        if (aliasKey && !map.has(aliasKey)) map.set(aliasKey, ing);
+      });
+    });
+    return map;
+  }, [catalogIngredients]);
+
+  /**
+   * Pour chaque ligne saisie par l'utilisateur, on dérive un IngredientItem
+   * "résolu" prêt à être persisté ou à alimenter le calcul de macros :
+   * - lien vers le catalogue (`ingredientId`) si on trouve un match,
+   * - unité par défaut du catalogue si l'utilisateur n'en a pas saisi,
+   * - quantité numérique (`amountValue`) si le texte `amount` est parsable.
+   */
+  const resolvedIngredients = useMemo<IngredientItem[]>(() => {
+    return ingredientsDetailed
+      .map((item) => {
+        const name = item.name?.trim() ?? '';
+        if (!name) return null;
+        const amount = item.amount?.trim() || undefined;
+        const unit = item.unit?.trim() || undefined;
+        const matched = item.ingredientId
+          ? catalogIngredients.find((c) => c.id === item.ingredientId)
+          : catalogByNormalizedName.get(normalizeIngredientName(name));
+        const ingredientId = matched?.id ?? item.ingredientId;
+        const finalUnit = unit ?? matched?.defaultUnit;
+        const amountValue = parseAmountValue(amount);
+        return {
+          name,
+          ...(amount ? { amount } : {}),
+          ...(finalUnit ? { unit: finalUnit } : {}),
+          ...(ingredientId ? { ingredientId } : {}),
+          ...(amountValue !== undefined ? { amountValue } : {}),
+        };
+      })
+      .filter((v): v is IngredientItem => !!v);
+  }, [ingredientsDetailed, catalogIngredients, catalogByNormalizedName]);
+
+  /**
+   * Estimation live des macros calculée à partir des ingrédients liés au
+   * catalogue. Ne se met à jour que lorsque l'utilisateur tape ou modifie
+   * une ligne.
+   */
+  const macroEstimate = useMemo(
+    () => computeMacrosFromIngredients(resolvedIngredients, catalogIngredients),
+    [resolvedIngredients, catalogIngredients],
+  );
+
+  const applyMacroEstimate = () => {
+    setCalories(String(macroEstimate.kcal));
+    setProtein(String(macroEstimate.protein));
+    setCarbs(String(macroEstimate.carbs));
+    setFats(String(macroEstimate.fats));
+  };
 
   useEffect(() => {
     getUserProfile().then((profile) => {
@@ -118,7 +222,31 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
       });
       setKnownIngredientNames(Array.from(names).sort((a, b) => a.localeCompare(b, 'fr')));
     });
+
+    getAllIngredients()
+      .then(setCatalogIngredients)
+      .catch(() => {
+        // silencieux : si les règles ne sont pas encore déployées on retombe sur les anciennes suggestions
+      });
   }, []);
+
+  /**
+   * Ré-enrichit les ingrédients une fois le catalogue chargé, en mode édition.
+   * On ne fait cet enrichissement qu'une seule fois (premier chargement non
+   * vide du catalogue) pour ne pas écraser les modifications de l'utilisateur.
+   * Conserve les noms tels quels, ajoute seulement `ingredientId` (et `unit`
+   * par défaut quand vide).
+   */
+  const hasEnrichedFromCatalogRef = useRef(false);
+  useEffect(() => {
+    if (!isEditMode || hasEnrichedFromCatalogRef.current || catalogIngredients.length === 0) {
+      return;
+    }
+    hasEnrichedFromCatalogRef.current = true;
+    setIngredientsDetailed((current) =>
+      enrichIngredientsForRecipe(current, undefined, catalogIngredients),
+    );
+  }, [catalogIngredients, isEditMode]);
 
   const ingredientSuggestions = useMemo(() => {
     if (focusedIngredientIndex === null) return [];
@@ -168,6 +296,27 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
     setIngredientsDetailed((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item)),
     );
+  };
+
+  /**
+   * Sélection d'une suggestion : on remplace le name, et si on trouve un
+   * match dans le catalogue, on lie l'ingredientId et on pré-remplit l'unité
+   * tant qu'elle n'a pas été saisie manuellement.
+   */
+  const applyIngredientSuggestion = (index: number, name: string) => {
+    const match = catalogByNormalizedName.get(normalizeIngredientName(name));
+    setIngredientsDetailed((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        return {
+          ...item,
+          name,
+          ingredientId: match?.id ?? item.ingredientId,
+          unit: item.unit?.trim() ? item.unit : match?.defaultUnit ?? item.unit,
+        };
+      }),
+    );
+    setFocusedIngredientIndex(null);
   };
 
   const removeIngredient = (index: number) => {
@@ -247,12 +396,7 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
       const carbsVal = carbs.trim() && !Number.isNaN(Number(carbs)) ? Number(carbs) : undefined;
       const fatsVal = fats.trim() && !Number.isNaN(Number(fats)) ? Number(fats) : undefined;
       const cleanedInstructions = instructions.map((step) => step.trim()).filter(Boolean);
-      const cleanedIngredientsDetailed = ingredientsDetailed
-        .map((item) => ({
-          name: item.name?.trim() ?? '',
-          amount: item.amount?.trim() || undefined,
-        }))
-        .filter((item) => item.name);
+      const cleanedIngredientsDetailed: IngredientItem[] = resolvedIngredients;
       const nextIngredientLibrary = Array.from(
         new Set([
           ...userIngredientLibrary,
@@ -516,6 +660,29 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
                   />
                 </View>
               </View>
+
+              {isUsableEstimate(macroEstimate) ? (
+                <View style={styles.estimateBanner}>
+                  <View style={styles.estimateTextWrap}>
+                    <Text style={styles.estimateTitle}>Estimation depuis les ingrédients</Text>
+                    <Text style={styles.estimateLine}>
+                      {macroEstimate.kcal} kcal · {macroEstimate.protein} g P · {macroEstimate.carbs} g G · {macroEstimate.fats} g L
+                    </Text>
+                    {macroEstimate.uncountedCount > 0 ? (
+                      <Text style={styles.estimateHint}>
+                        {macroEstimate.linkedCount} ingrédient{macroEstimate.linkedCount > 1 ? 's' : ''} sur {macroEstimate.linkedCount + macroEstimate.uncountedCount} pris en compte
+                      </Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.estimateApplyBtn}
+                    onPress={applyMacroEstimate}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.estimateApplyText}>Utiliser</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
 
           </View>
@@ -623,10 +790,7 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
                                 <TouchableOpacity
                                   key={`${index}-s-${name}`}
                                   style={styles.suggestionChip}
-                                  onPress={() => {
-                                    updateIngredient(index, { name });
-                                    setFocusedIngredientIndex(null);
-                                  }}
+                                  onPress={() => applyIngredientSuggestion(index, name)}
                                   activeOpacity={0.8}
                                 >
                                   <Text style={styles.suggestionChipText}>{name}</Text>
@@ -644,10 +808,7 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
                                 <TouchableOpacity
                                   key={`${index}-l-${name}`}
                                   style={styles.suggestionChip}
-                                  onPress={() => {
-                                    updateIngredient(index, { name });
-                                    setFocusedIngredientIndex(null);
-                                  }}
+                                  onPress={() => applyIngredientSuggestion(index, name)}
                                   activeOpacity={0.8}
                                 >
                                   <Text style={styles.suggestionChipText}>{name}</Text>
@@ -887,6 +1048,48 @@ const styles = StyleSheet.create({
   recipeInfoBlock: {
     marginTop: 2,
     gap: 10,
+  },
+  estimateBanner: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#EEF7F0',
+    borderWidth: 1,
+    borderColor: '#CDE8D4',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  estimateTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  estimateTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2F6A3F',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  estimateLine: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  estimateHint: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  estimateApplyBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#2F6A3F',
+  },
+  estimateApplyText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   metricsRow: {
     flexDirection: 'row',

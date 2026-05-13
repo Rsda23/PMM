@@ -38,6 +38,14 @@ yarn-error.*
 .env
 firebase-service-account*.json
 
+# Firebase CLI local artifacts
+firebase-debug.log*
+firestore-debug.log*
+.firebase/
+
+# generated draft catalogs (intermediate, before manual curation)
+data/*.draft.json
+
 # typescript
 *.tsbuildinfo
 

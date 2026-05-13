@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -17,7 +18,13 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
 import type { RootTabParamList } from '../components/Navbar';
-import { getAllRecipes, type Recipe } from '../services/api/recipesApi';
+import {
+  getRecipesPage,
+  getRecipesTotalCount,
+  RECIPES_PAGE_SIZE,
+  type Recipe,
+  type RecipesPageCursor,
+} from '../services/api/recipesApi';
 import { useUserStore } from '../store/userStore';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile } from '../services/api/userProfileApi';
@@ -67,6 +74,11 @@ const RecipesScreen = () => {
   const scrollRef = useRef<ScrollView>(null);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [lastCursor, setLastCursor] = useState<RecipesPageCursor>(null);
+  const [hasMoreRecipes, setHasMoreRecipes] = useState(true);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreLockRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [showPublicRecipes, setShowPublicRecipes] = useState(true);
@@ -75,31 +87,80 @@ const RecipesScreen = () => {
     auth.currentUser?.photoURL ?? null,
   );
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [totalRecipeCount, setTotalRecipeCount] = useState<number | null>(null);
+  const skipToggleCountEffectRef = useRef(true);
 
   const objective = useUserStore((state) => state.objective);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const toggleFavorite = useUserStore((state) => state.toggleFavorite);
   const pruneFavorites = useUserStore((state) => state.pruneFavorites);
 
-  const loadData = useCallback(async () => {
-    const [data, profile] = await Promise.all([getAllRecipes(), getUserProfile()]);
-    setRecipes(data);
-    pruneFavorites(data.map((recipe) => recipe.id));
-    if (profile?.avatarUrl) {
-      setAvatarUrl(profile.avatarUrl);
-    } else if (auth.currentUser?.photoURL) {
-      setAvatarUrl(auth.currentUser.photoURL);
+  const refreshTotalCount = useCallback(async () => {
+    const n = await getRecipesTotalCount(!showPublicRecipes);
+    setTotalRecipeCount(n);
+  }, [showPublicRecipes]);
+
+  const loadFirstPage = useCallback(async () => {
+    setLoadingInitial(true);
+    setRecipes([]);
+    setLastCursor(null);
+    setHasMoreRecipes(true);
+    try {
+      const [page, profile] = await Promise.all([
+        getRecipesPage(RECIPES_PAGE_SIZE, null),
+        getUserProfile(),
+      ]);
+      setRecipes(page.recipes);
+      setLastCursor(page.cursor);
+      setHasMoreRecipes(page.hasMore);
+      pruneFavorites(page.recipes.map((recipe) => recipe.id));
+      await refreshTotalCount();
+      if (profile?.avatarUrl) {
+        setAvatarUrl(profile.avatarUrl);
+      } else if (auth.currentUser?.photoURL) {
+        setAvatarUrl(auth.currentUser.photoURL);
+      }
+    } finally {
+      setLoadingInitial(false);
     }
-  }, [pruneFavorites]);
+  }, [pruneFavorites, refreshTotalCount]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (skipToggleCountEffectRef.current) {
+      skipToggleCountEffectRef.current = false;
+      return;
+    }
+    void (async () => {
+      const n = await getRecipesTotalCount(!showPublicRecipes);
+      setTotalRecipeCount(n);
+    })();
+  }, [showPublicRecipes]);
+
+  const loadMoreRecipes = useCallback(async () => {
+    if (!hasMoreRecipes || loadMoreLockRef.current || loadingInitial || loadingMore) return;
+    if (lastCursor === null) return;
+
+    loadMoreLockRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await getRecipesPage(RECIPES_PAGE_SIZE, lastCursor);
+      setRecipes((prev) => {
+        const merged = [...prev, ...page.recipes];
+        pruneFavorites(merged.map((r) => r.id));
+        return merged;
+      });
+      setLastCursor(page.cursor);
+      setHasMoreRecipes(page.hasMore);
+    } finally {
+      loadMoreLockRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMoreRecipes, lastCursor, loadingInitial, loadingMore, pruneFavorites]);
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [loadData]),
+      loadFirstPage();
+    }, [loadFirstPage]),
   );
 
   useEffect(() => {
@@ -171,21 +232,39 @@ const RecipesScreen = () => {
     parent?.navigate('Profil', undefined);
   };
 
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    if (offsetY > 320 && !showScrollTop) {
-      setShowScrollTop(true);
-    } else if (offsetY <= 320 && showScrollTop) {
-      setShowScrollTop(false);
-    }
-  };
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      setShowScrollTop((prev) => {
+        if (offsetY > 320 && !prev) return true;
+        if (offsetY <= 320 && prev) return false;
+        return prev;
+      });
+
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const paddingToBottom = 420;
+      const nearBottom =
+        layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+      if (nearBottom && hasMoreRecipes && !loadingInitial && !loadingMore) {
+        void loadMoreRecipes();
+      }
+    },
+    [hasMoreRecipes, loadingInitial, loadingMore, loadMoreRecipes],
+  );
 
   const showHero = !!featuredRecipe && activeFilter === 'all' && !searchQuery.trim();
   const heroRecipes = useMemo(
     () => (showHero && featuredRecipe ? [featuredRecipe, ...listRecipes] : displayedRecipes),
     [showHero, featuredRecipe, listRecipes, displayedRecipes],
   );
-  const sectionLabel = `${heroRecipes.length} recette${heroRecipes.length !== 1 ? 's' : ''}`;
+  const sectionLabel = useMemo(() => {
+    const n = totalRecipeCount;
+    if (n !== null) {
+      return `${n} recette${n !== 1 ? 's' : ''}`;
+    }
+    const fallback = heroRecipes.length;
+    return `${fallback} recette${fallback !== 1 ? 's' : ''}`;
+  }, [totalRecipeCount, heroRecipes.length]);
   const getRecipeBadgeLabel = useCallback(
     (recipe: Recipe) => {
       if (recipe.difficulty?.trim()) return recipe.difficulty.trim();
@@ -309,7 +388,11 @@ const RecipesScreen = () => {
 
         {/* ── Recipe list ── */}
         <View style={styles.listWrapper}>
-          {heroRecipes.length === 0 ? (
+          {loadingInitial && recipes.length === 0 ? (
+            <View style={styles.initialLoading}>
+              <ActivityIndicator size="large" color="#1565c0" />
+            </View>
+          ) : heroRecipes.length === 0 ? (
             <Text style={styles.empty}>Aucune recette ne correspond.</Text>
           ) : (
             heroRecipes.map((recipe) => {
@@ -375,6 +458,11 @@ const RecipesScreen = () => {
               );
             })
           )}
+          {loadingMore ? (
+            <View style={styles.loadMoreFooter}>
+              <ActivityIndicator size="small" color="#1565c0" />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -683,6 +771,16 @@ const styles = StyleSheet.create({
   /* ── List ── */
   listWrapper: {
     paddingHorizontal: 24,
+  },
+  initialLoading: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreFooter: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: {
     fontSize: 14,

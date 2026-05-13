@@ -1,23 +1,62 @@
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import {
   addDoc,
   collection,
   deleteDoc,
   deleteField,
   doc,
+  documentId,
+  getCountFromServer,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   serverTimestamp,
+  startAfter,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/firebaseConfig';
 
 export type Objective = 'perte_poids' | 'prise_masse' | 'equilibre';
 const PRIVATE_TAG_PREFIX = 'private:';
 export type IngredientItem = {
+  /** Nom affiché. Reste la source pour l'UI : on dénormalise même quand on a un ingredientId. */
   name: string;
+  /** Quantité telle que saisie par l'utilisateur (texte libre, peut contenir "1/2"). */
   amount?: string;
+  /** Unité libre (compat actuelle). Peut être une chaîne libre type "cuillère à soupe". */
   unit?: string;
+  /** ID du document de la collection `ingredients` quand l'item est lié au catalogue. Optionnel. */
+  ingredientId?: string;
+  /** Quantité parsée en nombre (g, ml, pièces…) pour les calculs de macros. Optionnel. */
+  amountValue?: number;
 };
+
+/**
+ * Nettoie un tableau d'ingrédients avant écriture Firestore.
+ * - Retire les champs `undefined` (Firestore les rejette avec la config par défaut).
+ * - Trim le `name` et garde uniquement les items qui ont un nom non vide.
+ * - `amountValue` n'est conservé que s'il s'agit d'un nombre fini.
+ */
+const sanitizeIngredientsDetailedForWrite = (items: IngredientItem[]): Record<string, unknown>[] =>
+  items
+    .map((item) => {
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      if (!name) return null;
+      const out: Record<string, unknown> = { name };
+      if (typeof item.amount === 'string' && item.amount.trim()) out.amount = item.amount.trim();
+      if (typeof item.unit === 'string' && item.unit.trim()) out.unit = item.unit.trim();
+      if (typeof item.ingredientId === 'string' && item.ingredientId.trim()) {
+        out.ingredientId = item.ingredientId.trim();
+      }
+      if (typeof item.amountValue === 'number' && Number.isFinite(item.amountValue)) {
+        out.amountValue = item.amountValue;
+      }
+      return out;
+    })
+    .filter((v): v is Record<string, unknown> => !!v);
 
 const mapTagsForCurrentUser = (tags: string[], currentUid?: string): string[] => {
   return tags.flatMap((tag) => {
@@ -71,7 +110,7 @@ type RecipeDocument = {
   name?: string;
   title?: string;
   ingredients?: string[];
-  ingredientsDetailed?: IngredientItem[];
+  ingredientsDetailed?: Array<Partial<IngredientItem>>;
   instructions?: string[] | string;
   image?: string;
   calories: number;
@@ -100,10 +139,20 @@ const mapFirestoreRecipeToRecipe = (id: string, docData: RecipeDocument, uid: st
           if (!item || typeof item !== 'object') return null;
           const name = typeof item.name === 'string' ? item.name.trim() : '';
           if (!name) return null;
+          const ingredientId =
+            typeof item.ingredientId === 'string' && item.ingredientId.trim()
+              ? item.ingredientId.trim()
+              : undefined;
+          const amountValue =
+            typeof item.amountValue === 'number' && Number.isFinite(item.amountValue)
+              ? item.amountValue
+              : undefined;
           return {
             name,
             amount: typeof item.amount === 'string' ? item.amount : undefined,
             unit: typeof item.unit === 'string' ? item.unit : undefined,
+            ingredientId,
+            amountValue,
           };
         })
         .filter((item): item is IngredientItem => !!item)
@@ -145,6 +194,79 @@ export const getRecommendedRecipes = async (
   return filtered.length > 0 ? filtered : recipes;
 };
 
+/** Taille d’une page pour l’écran Recettes (affichage progressif). */
+export const RECIPES_PAGE_SIZE = 4;
+
+/**
+ * Nombre total de recettes (agrégation Firestore, sans charger les documents).
+ * @param onlyMine si true, uniquement les recettes créées par l’utilisateur connecté.
+ */
+export async function getRecipesTotalCount(onlyMine: boolean): Promise<number> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return 0;
+  try {
+    const col = collection(db, 'recipes');
+    const snapshot = onlyMine
+      ? await getCountFromServer(query(col, where('createdBy', '==', uid)))
+      : await getCountFromServer(col);
+    return snapshot.data().count;
+  } catch (e) {
+    console.warn('getRecipesTotalCount failed:', e);
+    return 0;
+  }
+}
+
+export type RecipesPageCursor = QueryDocumentSnapshot<DocumentData> | null;
+
+export type RecipesPageResult = {
+  recipes: Recipe[];
+  /** Dernier document de la page courante (pour la page suivante). */
+  cursor: RecipesPageCursor;
+  hasMore: boolean;
+};
+
+/**
+ * Charge une page de recettes (ordre stable par id document Firestore).
+ */
+export async function getRecipesPage(
+  pageSize: number,
+  afterCursor: RecipesPageCursor
+): Promise<RecipesPageResult> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    return { recipes: [], cursor: null, hasMore: false };
+  }
+
+  const col = collection(db, 'recipes');
+  const ordered = orderBy(documentId());
+  const pageLimit = limit(pageSize + 1);
+  const q = afterCursor
+    ? query(col, ordered, startAfter(afterCursor), pageLimit)
+    : query(col, ordered, pageLimit);
+
+  try {
+    const snapshot = await getDocs(q);
+    const docs = snapshot.docs;
+    const hasExtra = docs.length > pageSize;
+    const pageDocs = hasExtra ? docs.slice(0, pageSize) : docs;
+
+    const recipes = pageDocs.map((docSnap) =>
+      mapFirestoreRecipeToRecipe(docSnap.id, docSnap.data() as RecipeDocument, uid),
+    );
+    const lastDoc = pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : undefined;
+    const cursor: RecipesPageCursor = lastDoc ?? null;
+
+    return {
+      recipes,
+      cursor,
+      hasMore: hasExtra,
+    };
+  } catch (e) {
+    console.warn('getRecipesPage failed:', e);
+    return { recipes: [], cursor: null, hasMore: false };
+  }
+}
+
 export const getAllRecipes = async (): Promise<Recipe[]> => {
   const uid = auth.currentUser?.uid;
   if (!uid) return [];
@@ -184,13 +306,17 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
     throw new Error('Tu dois être connecté pour créer une recette.');
   }
 
-  const { image, instructions, prepMinutes, ...required } = recipe;
+  const { image, instructions, prepMinutes, ingredientsDetailed, ...required } = recipe;
 
   const payload: Record<string, unknown> = {
     ...required,
     createdAt: serverTimestamp(),
     createdBy: userId,
   };
+
+  if (ingredientsDetailed && ingredientsDetailed.length > 0) {
+    payload.ingredientsDetailed = sanitizeIngredientsDetailedForWrite(ingredientsDetailed);
+  }
 
   if (image) {
     payload.image = image;
@@ -236,7 +362,9 @@ export const updateRecipe = async (
   if (updates.fats !== undefined) payload.fats = updates.fats;
   if (updates.tags !== undefined) payload.tags = updates.tags;
   if (updates.ingredients !== undefined) payload.ingredients = updates.ingredients;
-  if (updates.ingredientsDetailed !== undefined) payload.ingredientsDetailed = updates.ingredientsDetailed;
+  if (updates.ingredientsDetailed !== undefined) {
+    payload.ingredientsDetailed = sanitizeIngredientsDetailedForWrite(updates.ingredientsDetailed);
+  }
   if (updates.instructions !== undefined) payload.instructions = updates.instructions;
   if (updates.image !== undefined) payload.image = updates.image;
   if (options?.clearPrepMinutes) {

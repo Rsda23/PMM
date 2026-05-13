@@ -16,8 +16,11 @@ import type { RootTabParamList } from '../components/Navbar';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { auth } from '../services/firebase/firebaseConfig';
 import { deleteRecipe, getRecipeById, type Recipe } from '../services/api/recipesApi';
+import { getAllIngredients, type Ingredient } from '../services/api/ingredientsApi';
 import { getUserProfile } from '../services/api/userProfileApi';
 import { useUserStore } from '../store/userStore';
+import { computeMacrosFromIngredients, isUsableEstimate } from '../utils/nutrition';
+import { enrichIngredientsForRecipe } from '../utils/ingredientParsing';
 
 type Props = NativeStackScreenProps<RecipesStackParamList, 'RecipeDetail'>;
 const iconArrowBack = require('../../assets/figma/profil/arrow-back.png');
@@ -164,6 +167,26 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   }, []);
 
+  const [catalogIngredients, setCatalogIngredients] = useState<Ingredient[]>([]);
+  useEffect(() => {
+    getAllIngredients()
+      .then(setCatalogIngredients)
+      .catch(() => {
+        // silencieux : sans catalogue on n'affiche simplement pas l'estimation
+      });
+  }, []);
+
+  /**
+   * Estimation des macros depuis le catalogue : on enrichit les ingrédients
+   * (matching catalogue à la lecture, sans rien écrire en base), puis on
+   * additionne les contributions des items comptabilisables.
+   */
+  const macroEstimate = useMemo(() => {
+    if (catalogIngredients.length === 0) return null;
+    const enriched = enrichIngredientsForRecipe(ingredientsDetailed, ingredients, catalogIngredients);
+    return computeMacrosFromIngredients(enriched, catalogIngredients);
+  }, [ingredientsDetailed, ingredients, catalogIngredients]);
+
   const handleDelete = () => {
     Alert.alert(
       'Supprimer la recette',
@@ -302,6 +325,35 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           ))}
         </View>
+
+        {macroEstimate && isUsableEstimate(macroEstimate) ? (
+          <View style={styles.estimateCard}>
+            <View style={styles.estimateHeader}>
+              <Text style={styles.estimateTag}>Estimé depuis les ingrédients</Text>
+              <Text style={styles.estimateCoverage}>
+                {macroEstimate.linkedCount}/{macroEstimate.linkedCount + macroEstimate.uncountedCount}
+              </Text>
+            </View>
+            <View style={styles.estimateRow}>
+              <View style={styles.estimateItem}>
+                <Text style={styles.estimateItemLabel}>kcal</Text>
+                <Text style={styles.estimateItemValue}>{macroEstimate.kcal}</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={styles.estimateItemLabel}>Prot.</Text>
+                <Text style={styles.estimateItemValue}>{macroEstimate.protein}g</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={styles.estimateItemLabel}>Gluc.</Text>
+                <Text style={styles.estimateItemValue}>{macroEstimate.carbs}g</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={styles.estimateItemLabel}>Lip.</Text>
+                <Text style={styles.estimateItemValue}>{macroEstimate.fats}g</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         {!!ingredients?.length && (
           <View style={styles.ingredientsCard}>
@@ -507,6 +559,51 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
     minWidth: 3,
+  },
+  estimateCard: {
+    marginTop: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#EEF7F0',
+    borderWidth: 1,
+    borderColor: '#CDE8D4',
+    gap: 10,
+  },
+  estimateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  estimateTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2F6A3F',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  estimateCoverage: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  estimateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  estimateItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  estimateItemLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  estimateItemValue: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '700',
   },
   heroTitle: {
     color: '#FFFFFF',

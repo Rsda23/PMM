@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Modèle supposé (aligné sur src/services/api/*.ts)
+    // ===============================================================
+    //
+    // recipes/{id} — partagées entre utilisateurs connectés
+    //   createdBy: string (requis à la création côté app)
+    //   lectures: collection entière + orderBy(documentId) + count
+    //
+    // mealPlans/{id}
+    //   userId: string — requêtes where userId == auth.uid
+    //
+    // users/{uid} — profil, doc id = uid Firebase Auth
+    //
+    // ingredients/{id} — catalogue partagé d'ingrédients
+    //   createdBy: string | null
+    //     - null  => ingrédient "officiel" (seedé via Admin SDK, lecture seule côté client)
+    //     - uid   => ingrédient personnel de l'utilisateur (édition limitée à lui)
+    //   lecture: tous les utilisateurs connectés
+    //
+    // ===============================================================
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid;
+    }
+
+    match /mealPlans/{planId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /ingredients/{ingredientId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update, delete: if signedIn()
+        && resource.data.createdBy != null
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == resource.data.createdBy;
+    }
+  }
+}
