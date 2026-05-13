@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
+import type { RootTabParamList } from '../components/Navbar';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { auth } from '../services/firebase/firebaseConfig';
-import { deleteRecipe } from '../services/api/recipesApi';
+import { deleteRecipe, getRecipeById, type Recipe } from '../services/api/recipesApi';
 import { getUserProfile } from '../services/api/userProfileApi';
 import { useUserStore } from '../store/userStore';
 
@@ -22,6 +25,8 @@ const iconTime = require('../../assets/figma/recette/icon-time.png');
 const iconDifficulty = require('../../assets/figma/recette/icon-difficulty.png');
 const iconStar = require('../../assets/figma/recette/icon-star.png');
 const iconStarWhite = require('../../assets/figma/recette/star-white.png');
+const iconEdit = require('../../assets/figma/profil/icon-edit.png');
+const iconTrash = require('../../assets/figma/home/icon-trash.png');
 const MACRO_REFERENCE_GRAMS = {
   protein: 50,
   carbs: 260,
@@ -41,6 +46,12 @@ const TAG_LABELS: Record<string, string> = {
 };
 
 const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
+  const source = route.params.source;
+  const [recipe, setRecipe] = useState<Recipe>(() => {
+    const { source: _s, ...rest } = route.params;
+    return rest as Recipe;
+  });
+
   const {
     id,
     title,
@@ -56,18 +67,32 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     createdBy,
     difficulty,
     rating,
-  } = route.params;
+    prepMinutes,
+  } = recipe;
+
   const isOwner = !!auth.currentUser && auth.currentUser.uid === createdBy;
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void getRecipeById(route.params.id).then((fresh) => {
+        if (cancelled || !fresh) return;
+        setRecipe(fresh);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [route.params.id]),
+  );
   const removeFavorite = useUserStore((state) => state.removeFavorite);
   const toggleFavorite = useUserStore((state) => state.toggleFavorite);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const isFavorite = favoriteRecipeIds.includes(id);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(auth.currentUser?.photoURL ?? null);
 
-  const displayDifficulty = useMemo(() => difficulty ?? 'Moyen', [difficulty]);
-  const displayRating = useMemo(
-    () => (typeof rating === 'number' ? rating.toFixed(1) : '4.8'),
-    [rating],
+  const displayPrepMinutes = useMemo(
+    () => (typeof prepMinutes === 'number' && prepMinutes > 0 ? Math.round(prepMinutes) : 15),
+    [prepMinutes],
   );
   const macroCards = useMemo(() => {
     const proteinG = Math.max(Math.round(protein ?? 0), 0);
@@ -163,14 +188,42 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
+  const handleBack = () => {
+    if (source === 'home') {
+      const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
+      parent?.navigate('Recettes', { screen: 'Recipes' });
+      parent?.navigate('Accueil', { reTapToken: Date.now() });
+      return;
+    }
+    navigation.goBack();
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleBack} activeOpacity={0.75}>
             <Image source={iconArrowBack} style={styles.topIcon} />
           </TouchableOpacity>
           <View style={styles.topRight}>
+            {isOwner && (
+              <>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  onPress={() => navigation.navigate('CreateRecipe', { recipe })}
+                  activeOpacity={0.8}
+                >
+                  <Image source={iconEdit} style={[styles.topIcon, styles.topIconEdit]} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.iconBtn, styles.iconBtnDanger]}
+                  onPress={handleDelete}
+                  activeOpacity={0.8}
+                >
+                  <Image source={iconTrash} style={[styles.topIcon, styles.topIconDanger]} />
+                </TouchableOpacity>
+              </>
+            )}
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => toggleFavorite(id)}
@@ -203,16 +256,20 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               <View style={styles.heroMetaRow}>
                 <View style={styles.heroMetaItem}>
                   <Image source={iconTime} style={styles.heroMetaIcon} />
-                  <Text style={styles.heroMetaText}>15 min</Text>
+                  <Text style={styles.heroMetaText}>{displayPrepMinutes} min</Text>
                 </View>
-                <View style={styles.heroMetaItem}>
-                  <Image source={iconDifficulty} style={styles.heroMetaIcon} />
-                  <Text style={styles.heroMetaText}>{displayDifficulty}</Text>
-                </View>
-                <View style={styles.heroMetaItem}>
-                  <Image source={iconStar} style={styles.heroMetaIcon} />
-                  <Text style={styles.heroMetaText}>{displayRating}</Text>
-                </View>
+                {!!difficulty?.trim() && (
+                  <View style={styles.heroMetaItem}>
+                    <Image source={iconDifficulty} style={styles.heroMetaIcon} />
+                    <Text style={styles.heroMetaText}>{difficulty.trim()}</Text>
+                  </View>
+                )}
+                {typeof rating === 'number' && !Number.isNaN(rating) && (
+                  <View style={styles.heroMetaItem}>
+                    <Image source={iconStar} style={styles.heroMetaIcon} />
+                    <Text style={styles.heroMetaText}>{rating.toFixed(1)}</Text>
+                  </View>
+                )}
               </View>
 
               <Text style={styles.heroTitle} numberOfLines={3}>
@@ -283,20 +340,6 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         )}
 
-        {isOwner && (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => navigation.navigate('CreateRecipe', { recipe: route.params })}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.editButtonText}>Modifier la recette</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.85}>
-              <Text style={styles.deleteButtonText}>Supprimer</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -337,6 +380,16 @@ const styles = StyleSheet.create({
   },
   topIconFavorite: {
     tintColor: '#FACC15',
+  },
+  topIconEdit: {
+    tintColor: '#004D99',
+  },
+  iconBtnDanger: {
+    borderColor: 'rgba(186,26,26,0.15)',
+    backgroundColor: '#FFF5F5',
+  },
+  topIconDanger: {
+    tintColor: '#BA1A1A',
   },
   topRight: {
     flexDirection: 'row',
@@ -608,32 +661,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'right',
     minWidth: 62,
-  },
-  actionsRow: {
-    marginTop: 10,
-    gap: 12,
-  },
-  editButton: {
-    backgroundColor: '#004D99',
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  deleteButton: {
-    backgroundColor: '#BA1A1A',
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  deleteButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });
 

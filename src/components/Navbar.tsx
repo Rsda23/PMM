@@ -58,10 +58,12 @@ const Navbar = () => {
       <Tab.Screen
         name="Recettes"
         component={RecipesStack}
+        options={{
+          popToTopOnBlur: true,
+          lazy: false,
+        }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const isActive = navigation.isFocused();
-            if (!isActive) return;
             e.preventDefault();
             navigation.navigate('Recettes', {
               screen: 'Recipes',

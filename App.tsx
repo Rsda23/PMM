@@ -7,6 +7,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { User } from 'firebase/auth';
 import { subscribeToAuthState } from './src/services/firebase/auth';
 import { preloadAppAssets } from './src/assets/preloadAssets';
+import { useUserStore } from './src/store/userStore';
+import { clearRecipesCacheOnAuthChange } from './src/services/api/recipesApi';
+import { clearProfileCacheOnAuthChange } from './src/services/api/userProfileApi';
+import { clearMealPlansCacheOnAuthChange } from './src/services/api/mealPlansApi';
 import Navbar from './src/components/Navbar';
 import AuthStack from './src/navigation/AuthStack';
 
@@ -14,6 +18,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [assetsReady, setAssetsReady] = useState(false);
+  const resetStore = useUserStore((state) => state.resetStore);
+  const prevUidRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -28,6 +34,15 @@ export default function App() {
 
     try {
       unsubscribe = subscribeToAuthState((u) => {
+        const prevUid = prevUidRef.current;
+        const nextUid = u?.uid ?? null;
+        if (prevUid !== null && prevUid !== nextUid) {
+          resetStore();
+          clearRecipesCacheOnAuthChange();
+          clearProfileCacheOnAuthChange();
+          clearMealPlansCacheOnAuthChange();
+        }
+        prevUidRef.current = nextUid;
         setUser(u);
         setAuthReady(true);
       });

@@ -48,6 +48,8 @@ const clearMealPlansCache = () => {
   mealPlansInFlight = null;
 };
 
+export const clearMealPlansCacheOnAuthChange = clearMealPlansCache;
+
 function getWeekBounds(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
   const day = d.getDay();

@@ -10,12 +10,12 @@ type UserState = {
   toggleFavorite: (id: string) => void;
   removeFavorite: (id: string) => void;
   pruneFavorites: (validRecipeIds: string[]) => void;
+  resetStore: () => void;
 };
 
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
-      // Valeur par défaut provisoire
       objective: 'perte_poids',
       setObjective: (objective) => set({ objective }),
       favoriteRecipeIds: [],
@@ -40,6 +40,7 @@ export const useUserStore = create<UserState>()(
           if (next.length === state.favoriteRecipeIds.length) return state;
           return { favoriteRecipeIds: next };
         }),
+      resetStore: () => set({ objective: 'perte_poids', favoriteRecipeIds: [] }),
     }),
     {
       name: 'user-store',
@@ -47,4 +48,3 @@ export const useUserStore = create<UserState>()(
     },
   ),
 );
-

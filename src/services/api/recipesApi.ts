@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -44,6 +45,8 @@ export type Recipe = {
   createdBy?: string | null;
   difficulty?: string;
   rating?: number;
+  /** Durée de préparation en minutes (portion) */
+  prepMinutes?: number;
 };
 
 const RECIPES_CACHE_TTL_MS = 60_000;
@@ -61,6 +64,8 @@ const clearRecipesCache = () => {
   recipesInFlight = null;
 };
 
+export const clearRecipesCacheOnAuthChange = clearRecipesCache;
+
 /** Document Firestore "recipes" (README) : name, ingredients, calories, tags */
 type RecipeDocument = {
   name?: string;
@@ -77,6 +82,59 @@ type RecipeDocument = {
   createdBy?: string | null;
   difficulty?: string;
   rating?: number;
+  prepMinutes?: number;
+};
+
+const mapFirestoreRecipeToRecipe = (id: string, docData: RecipeDocument, uid: string): Recipe => ({
+  id,
+  title: docData.name ?? docData.title ?? '',
+  calories: docData.calories ?? 0,
+  protein: typeof docData.protein === 'number' ? docData.protein : undefined,
+  carbs: typeof docData.carbs === 'number' ? docData.carbs : undefined,
+  fats: typeof docData.fats === 'number' ? docData.fats : undefined,
+  tags: mapTagsForCurrentUser(Array.isArray(docData.tags) ? docData.tags : [], uid),
+  ingredients: Array.isArray(docData.ingredients) ? docData.ingredients : [],
+  ingredientsDetailed: Array.isArray(docData.ingredientsDetailed)
+    ? docData.ingredientsDetailed
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const name = typeof item.name === 'string' ? item.name.trim() : '';
+          if (!name) return null;
+          return {
+            name,
+            amount: typeof item.amount === 'string' ? item.amount : undefined,
+            unit: typeof item.unit === 'string' ? item.unit : undefined,
+          };
+        })
+        .filter((item): item is IngredientItem => !!item)
+    : undefined,
+  instructions: Array.isArray(docData.instructions)
+    ? docData.instructions
+    : docData.instructions
+    ? [docData.instructions]
+    : undefined,
+  image: docData.image,
+  createdBy: docData.createdBy ?? null,
+  difficulty: docData.difficulty,
+  rating: docData.rating,
+  prepMinutes:
+    typeof docData.prepMinutes === 'number' && docData.prepMinutes > 0
+      ? Math.round(docData.prepMinutes)
+      : undefined,
+});
+
+export const getRecipeById = async (recipeId: string): Promise<Recipe | null> => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
+  try {
+    const ref = doc(db, 'recipes', recipeId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    return mapFirestoreRecipeToRecipe(snap.id, snap.data() as RecipeDocument, uid);
+  } catch (e) {
+    console.warn('getRecipeById failed:', e);
+    return null;
+  }
 };
 
 export const getRecommendedRecipes = async (
@@ -104,42 +162,9 @@ export const getAllRecipes = async (): Promise<Recipe[]> => {
   recipesInFlight = (async () => {
     try {
       const snapshot = await getDocs(collection(db, 'recipes'));
-      const data = snapshot.docs.map((docSnap) => {
-        const docData = docSnap.data() as RecipeDocument;
-        return {
-          id: docSnap.id,
-          title: docData.name ?? docData.title ?? '',
-          calories: docData.calories ?? 0,
-          protein: typeof docData.protein === 'number' ? docData.protein : undefined,
-          carbs: typeof docData.carbs === 'number' ? docData.carbs : undefined,
-          fats: typeof docData.fats === 'number' ? docData.fats : undefined,
-          tags: mapTagsForCurrentUser(Array.isArray(docData.tags) ? docData.tags : [], uid),
-          ingredients: Array.isArray(docData.ingredients) ? docData.ingredients : [],
-          ingredientsDetailed: Array.isArray(docData.ingredientsDetailed)
-            ? docData.ingredientsDetailed
-                .map((item) => {
-                  if (!item || typeof item !== 'object') return null;
-                  const name = typeof item.name === 'string' ? item.name.trim() : '';
-                  if (!name) return null;
-                  return {
-                    name,
-                    amount: typeof item.amount === 'string' ? item.amount : undefined,
-                    unit: typeof item.unit === 'string' ? item.unit : undefined,
-                  };
-                })
-                .filter((item): item is IngredientItem => !!item)
-            : undefined,
-          instructions: Array.isArray(docData.instructions)
-            ? docData.instructions
-            : docData.instructions
-            ? [docData.instructions]
-            : undefined,
-          image: docData.image,
-          createdBy: docData.createdBy ?? null,
-          difficulty: docData.difficulty,
-          rating: docData.rating,
-        };
-      });
+      const data = snapshot.docs.map((docSnap) =>
+        mapFirestoreRecipeToRecipe(docSnap.id, docSnap.data() as RecipeDocument, uid),
+      );
       recipesCache = { uid, fetchedAt: Date.now(), data };
       return data;
     } catch (e) {
@@ -159,7 +184,7 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
     throw new Error('Tu dois être connecté pour créer une recette.');
   }
 
-  const { image, instructions, ...required } = recipe;
+  const { image, instructions, prepMinutes, ...required } = recipe;
 
   const payload: Record<string, unknown> = {
     ...required,
@@ -175,6 +200,10 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
     payload.instructions = instructions;
   }
 
+  if (typeof prepMinutes === 'number' && prepMinutes > 0) {
+    payload.prepMinutes = Math.round(prepMinutes);
+  }
+
   await addDoc(collection(db, 'recipes'), payload);
   clearRecipesCache();
 };
@@ -182,6 +211,7 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
 export const updateRecipe = async (
   id: string,
   updates: Partial<Omit<Recipe, 'id'>>,
+  options?: { clearPrepMinutes?: boolean },
 ) => {
   const userId = auth.currentUser?.uid;
   if (!userId) {
@@ -209,6 +239,11 @@ export const updateRecipe = async (
   if (updates.ingredientsDetailed !== undefined) payload.ingredientsDetailed = updates.ingredientsDetailed;
   if (updates.instructions !== undefined) payload.instructions = updates.instructions;
   if (updates.image !== undefined) payload.image = updates.image;
+  if (options?.clearPrepMinutes) {
+    payload.prepMinutes = deleteField();
+  } else if (updates.prepMinutes !== undefined) {
+    payload.prepMinutes = updates.prepMinutes;
+  }
 
   await updateDoc(ref, payload);
   clearRecipesCache();

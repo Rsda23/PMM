@@ -69,6 +69,8 @@ const RecipesScreen = () => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+  const [showPublicRecipes, setShowPublicRecipes] = useState(true);
+  const toggleLockRef = useRef(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     auth.currentUser?.photoURL ?? null,
   );
@@ -111,16 +113,31 @@ const RecipesScreen = () => {
     if (!raw) return '?';
     return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
   }, [auth.currentUser?.displayName, auth.currentUser?.email]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(
+    auth.currentUser?.uid ?? null,
+  );
+
+  useEffect(() => {
+    setCurrentUserId(auth.currentUser?.uid ?? null);
+  }, [recipes]);
+
+  const visibilityFiltered = useMemo(() => {
+    if (showPublicRecipes) return recipes;
+    if (!currentUserId) return [];
+    return recipes.filter(
+      (recipe) => recipe.createdBy != null && recipe.createdBy === currentUserId,
+    );
+  }, [recipes, showPublicRecipes, currentUserId]);
 
   const searchFiltered = useMemo(() => {
-    if (!searchQuery.trim()) return recipes;
+    if (!searchQuery.trim()) return visibilityFiltered;
     const q = searchQuery.trim().toLowerCase();
-    return recipes.filter(
+    return visibilityFiltered.filter(
       (r) =>
         r.title.toLowerCase().includes(q) ||
         r.tags.some((t) => t.toLowerCase().includes(q)),
     );
-  }, [recipes, searchQuery]);
+  }, [visibilityFiltered, searchQuery]);
 
   const displayedRecipes = useMemo(() => {
     switch (activeFilter) {
@@ -140,9 +157,9 @@ const RecipesScreen = () => {
 
   const featuredRecipe = useMemo<Recipe | null>(() => {
     if (activeFilter !== 'all' || searchQuery.trim()) return null;
-    const recommended = recipes.filter((r) => r.tags.includes(objective) && r.image);
-    return recommended[0] ?? recipes.find((r) => !!r.image) ?? recipes[0] ?? null;
-  }, [recipes, objective, activeFilter, searchQuery]);
+    const recommended = visibilityFiltered.filter((r) => r.tags.includes(objective) && r.image);
+    return recommended[0] ?? visibilityFiltered.find((r) => !!r.image) ?? visibilityFiltered[0] ?? null;
+  }, [visibilityFiltered, objective, activeFilter, searchQuery]);
 
   const listRecipes = useMemo(() => {
     if (!featuredRecipe) return displayedRecipes;
@@ -263,6 +280,31 @@ const RecipesScreen = () => {
         {/* ── Section header ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{sectionLabel}</Text>
+          <TouchableOpacity
+            style={styles.glassToggleWrap}
+            onPress={() => {
+              if (toggleLockRef.current) return;
+              toggleLockRef.current = true;
+              setShowPublicRecipes((prev) => !prev);
+              setTimeout(() => { toggleLockRef.current = false; }, 400);
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: showPublicRecipes }}
+            accessibilityLabel={
+              showPublicRecipes
+                ? 'Affichage : toutes les recettes, catalogue inclus'
+                : 'Affichage : uniquement mes créations'
+            }
+            accessibilityHint="Active pour voir aussi les recettes du catalogue partagé. Désactive pour ne voir que tes recettes."
+          >
+            <Text style={styles.glassToggleLabel} numberOfLines={2}>
+              {showPublicRecipes ? 'Catalogue inclus' : 'Mes créations'}
+            </Text>
+            <View style={[styles.glassTrack, showPublicRecipes && styles.glassTrackOn]}>
+              <View style={[styles.glassThumb, showPublicRecipes && styles.glassThumbOn]} />
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* ── Recipe list ── */}
@@ -314,7 +356,12 @@ const RecipesScreen = () => {
                         <View style={styles.heroMeta}>
                           <View style={styles.heroMetaItem}>
                             <Image source={iconTime} style={styles.heroMetaIcon} />
-                            <Text style={styles.heroMetaText}>15 min</Text>
+                            <Text style={styles.heroMetaText}>
+                              {(recipe.prepMinutes != null && recipe.prepMinutes > 0
+                                ? Math.round(recipe.prepMinutes)
+                                : 15)}{' '}
+                              min
+                            </Text>
                           </View>
                           <View style={styles.heroMetaItem}>
                             <Image source={iconFire} style={styles.heroMetaIcon} />
@@ -576,6 +623,57 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#1A1C1C',
+  },
+  glassToggleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  glassToggleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#424752',
+    letterSpacing: 0.2,
+    textAlign: 'right',
+    maxWidth: 108,
+    lineHeight: 14,
+  },
+  glassTrack: {
+    width: 36,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  glassTrackOn: {
+    backgroundColor: '#FC6018',
+  },
+  glassThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+    alignSelf: 'flex-start',
+  },
+  glassThumbOn: {
+    alignSelf: 'flex-end',
   },
   seeAll: {
     fontSize: 14,

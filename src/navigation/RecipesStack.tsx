@@ -7,7 +7,7 @@ import type { Recipe } from '../services/api/recipesApi';
 
 export type RecipesStackParamList = {
   Recipes: { reTapToken?: number } | undefined;
-  RecipeDetail: Recipe;
+  RecipeDetail: Recipe & { source?: 'home' | 'recipes' };
   CreateRecipe: { recipe?: Recipe } | undefined;
 };
 

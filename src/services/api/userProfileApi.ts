@@ -26,6 +26,8 @@ const clearProfileCache = () => {
   profileInFlight = null;
 };
 
+export const clearProfileCacheOnAuthChange = clearProfileCache;
+
 export const getUserProfile = async (): Promise<UserProfile | null> => {
   const uid = auth.currentUser?.uid;
   if (!uid) return null;

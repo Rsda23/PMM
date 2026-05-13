@@ -6,7 +6,7 @@ import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../components/Navbar';
-import { getRecommendedRecipes, type Recipe } from '../services/api/recipesApi';
+import { getAllRecipes, getRecommendedRecipes, type Recipe } from '../services/api/recipesApi';
 import {
   deleteMealPlan,
   getMealPlansForDateRange,
@@ -154,6 +154,43 @@ const HomeScreen = () => {
     } finally {
       setDeletingMealIds((ids) => ids.filter((id) => id !== entryId));
     }
+  };
+
+  const openMealRecipeDetail = async (entry: MealPlanEntry) => {
+    if (!entry.recipeId) return;
+    const allRecipes = await getAllRecipes();
+    const fullRecipe = allRecipes.find((recipe) => recipe.id === entry.recipeId);
+
+    if (fullRecipe) {
+      navigation.navigate('Recettes', {
+        screen: 'RecipeDetail',
+        params: {
+          ...fullRecipe,
+          source: 'home',
+        },
+      });
+      return;
+    }
+
+    navigation.navigate('Recettes', {
+      screen: 'RecipeDetail',
+      params: {
+        id: entry.recipeId,
+        title: entry.recipeTitle,
+        calories: entry.calories,
+        protein: entry.protein,
+        carbs: entry.carbs,
+        fats: entry.fats,
+        tags: [],
+        ingredients: [],
+        instructions: [],
+        image: undefined,
+        createdBy: undefined,
+        difficulty: undefined,
+        rating: undefined,
+        source: 'home',
+      },
+    });
   };
 
   const weekSummary = useMemo(() => {
@@ -458,7 +495,17 @@ const HomeScreen = () => {
                   >
                     {checked && <Image source={iconCheck} style={styles.checkIcon} />}
                   </TouchableOpacity>
-                  <Text style={styles.mealTitle} numberOfLines={1}>{entry.recipeTitle}</Text>
+                  <TouchableOpacity
+                    style={styles.mealTitleBtn}
+                    onPress={() => {
+                      openMealRecipeDetail(entry).catch((error) => {
+                        console.warn('openMealRecipeDetail failed:', error);
+                      });
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.mealTitle} numberOfLines={1}>{entry.recipeTitle}</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => deleteMeal(entry.id)}
                     disabled={loadingDelete}
@@ -840,10 +887,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   mealTitle: {
-    flex: 1,
     fontSize: 14,
     color: '#0F172A',
     fontWeight: '500',
+  },
+  mealTitleBtn: {
+    flex: 1,
+    minWidth: 0,
   },
   mealKcal: {
     fontSize: 12,

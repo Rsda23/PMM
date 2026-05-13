@@ -26,7 +26,6 @@ const iconArrowBack = require('../../assets/figma/profil/arrow-back.png');
 const iconPlus = require('../../assets/figma/recette/plus.png');
 const iconPhoto = require('../../assets/figma/recette/icon-photo.png');
 const iconTrash = require('../../assets/figma/home/icon-trash.png');
-
 const TAG_OPTIONS = [
   'perte_poids',
   'prise_masse',
@@ -55,7 +54,18 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
   const [calories, setCalories] = useState(
     existingRecipe ? String(existingRecipe.calories) : '',
   );
-  const [prepTime, setPrepTime] = useState('');
+  const [protein, setProtein] = useState(
+    existingRecipe?.protein != null ? String(existingRecipe.protein) : '',
+  );
+  const [carbs, setCarbs] = useState(
+    existingRecipe?.carbs != null ? String(existingRecipe.carbs) : '',
+  );
+  const [fats, setFats] = useState(
+    existingRecipe?.fats != null ? String(existingRecipe.fats) : '',
+  );
+  const [prepTime, setPrepTime] = useState(
+    existingRecipe?.prepMinutes != null ? String(existingRecipe.prepMinutes) : '',
+  );
   const [tags, setTags] = useState<string[]>(existingRecipe?.tags ?? []);
   const [customTagLibrary, setCustomTagLibrary] = useState<string[]>([]);
   const [userIngredientLibrary, setUserIngredientLibrary] = useState<string[]>([]);
@@ -233,6 +243,9 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
     setSubmitting(true);
     try {
       const cal = Number(calories);
+      const proteinVal = protein.trim() && !Number.isNaN(Number(protein)) ? Number(protein) : undefined;
+      const carbsVal = carbs.trim() && !Number.isNaN(Number(carbs)) ? Number(carbs) : undefined;
+      const fatsVal = fats.trim() && !Number.isNaN(Number(fats)) ? Number(fats) : undefined;
       const cleanedInstructions = instructions.map((step) => step.trim()).filter(Boolean);
       const cleanedIngredientsDetailed = ingredientsDetailed
         .map((item) => ({
@@ -250,25 +263,42 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
         const right = [item.amount, item.unit].filter(Boolean).join(' ').trim();
         return right ? `${item.name} - ${right}` : item.name;
       });
+      const prepTrim = prepTime.trim();
+      const prepMinutesParsed =
+        prepTrim === '' || Number.isNaN(Number(prepTrim))
+          ? undefined
+          : Math.max(1, Math.round(Number(prepTrim)));
       if (isEditMode && existingRecipe) {
-        await updateRecipe(existingRecipe.id, {
-          title: title.trim(),
-          image: image.trim() || undefined,
-          calories: cal,
-          tags: toPersistedTags(tags),
-          ingredients: legacyIngredients,
-          ingredientsDetailed: cleanedIngredientsDetailed,
-          instructions: cleanedInstructions.length > 0 ? cleanedInstructions : undefined,
-        });
+        await updateRecipe(
+          existingRecipe.id,
+          {
+            title: title.trim(),
+            image: image.trim() || undefined,
+            calories: cal,
+            protein: proteinVal,
+            carbs: carbsVal,
+            fats: fatsVal,
+            tags: toPersistedTags(tags),
+            ingredients: legacyIngredients,
+            ingredientsDetailed: cleanedIngredientsDetailed,
+            instructions: cleanedInstructions.length > 0 ? cleanedInstructions : undefined,
+            ...(prepMinutesParsed !== undefined ? { prepMinutes: prepMinutesParsed } : {}),
+          },
+          prepTrim === '' ? { clearPrepMinutes: true } : undefined,
+        );
       } else {
         await createRecipe({
           title: title.trim(),
           image: image.trim() || undefined,
           calories: cal,
+          protein: proteinVal,
+          carbs: carbsVal,
+          fats: fatsVal,
           tags: toPersistedTags(tags),
           ingredients: legacyIngredients,
           ingredientsDetailed: cleanedIngredientsDetailed,
           instructions: cleanedInstructions.length > 0 ? cleanedInstructions : undefined,
+          ...(prepMinutesParsed !== undefined ? { prepMinutes: prepMinutesParsed } : {}),
         });
       }
       setUserIngredientLibrary(nextIngredientLibrary);
@@ -287,6 +317,10 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
       setTitle('');
       setImage('');
       setCalories('');
+      setProtein('');
+      setCarbs('');
+      setFats('');
+      setPrepTime('');
       setTags([]);
       setIngredientsDetailed([]);
       setFocusedIngredientIndex(null);
@@ -310,19 +344,34 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
               <Image source={iconArrowBack} style={styles.backIcon} />
             </TouchableOpacity>
-            <Text style={styles.topTitle}>{isEditMode ? 'Modifier la recette' : 'Creer une recette'}</Text>
+            <Text style={styles.topTitle}>{isEditMode ? 'Modifier la recette' : 'Créer une recette'}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            activeOpacity={0.8}
-            onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Profil')}
-          >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+          <View style={styles.topRight}>
+            {isEditMode ? (
+              <TouchableOpacity
+                style={[styles.saveIconBtn, submitting && styles.saveIconBtnDisabled]}
+                onPress={handleSubmit}
+                disabled={submitting}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveIconText}>
+                  {submitting ? '...' : 'Enregistrer'}
+                </Text>
+              </TouchableOpacity>
             ) : (
-              <Text style={styles.avatarInitial}>{avatarInitial}</Text>
+              <TouchableOpacity
+                style={styles.avatarBtn}
+                activeOpacity={0.8}
+                onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Profil')}
+              >
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarInitial}>{avatarInitial}</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -426,6 +475,42 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
                     value={prepTime}
                     onChangeText={setPrepTime}
                     placeholder="30"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.metricsRow}>
+                <View style={styles.metricField}>
+                  <Text style={styles.label}>Protéines (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={protein}
+                    onChangeText={setProtein}
+                    placeholder="30"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.metricField}>
+                  <Text style={styles.label}>Glucides (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={carbs}
+                    onChangeText={setCarbs}
+                    placeholder="45"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.metricField}>
+                  <Text style={styles.label}>Lipides (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={fats}
+                    onChangeText={setFats}
+                    placeholder="15"
                     placeholderTextColor="#9CA3AF"
                     keyboardType="numeric"
                   />
@@ -620,20 +705,18 @@ const CreateRecipeScreen: React.FC<Props> = ({ navigation, route }) => {
             )}
           </View>
 
-          <TouchableOpacity
-            style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={submitting}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.submitButtonText}>
-              {submitting
-                ? 'Enregistrement...'
-                : isEditMode
-                ? 'Mettre a jour la recette'
-                : 'Enregistrer la recette'}
-            </Text>
-          </TouchableOpacity>
+          {!isEditMode && (
+            <TouchableOpacity
+              style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+              onPress={handleSubmit}
+              disabled={submitting}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.submitButtonText}>
+                {submitting ? 'Enregistrement...' : 'Créer la recette'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -670,6 +753,27 @@ const styles = StyleSheet.create({
     color: '#18181B',
     letterSpacing: -0.3,
     flexShrink: 1,
+  },
+  topRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  saveIconBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#004D99',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveIconBtnDisabled: {
+    backgroundColor: '#93C5FD',
+  },
+  saveIconText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   avatarBtn: {
     width: 40,

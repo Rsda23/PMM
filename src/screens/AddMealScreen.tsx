@@ -299,7 +299,13 @@ const AddMealScreen: React.FC<Props> = ({ route, navigation }) => {
                     <Text style={[styles.recipeTitle, isSelected && styles.recipeTitleSelected]} numberOfLines={1}>
                       {recipe.title}
                     </Text>
-                    <Text style={styles.recipeMeta}>{recipe.calories} kcal • 15 min</Text>
+                    <Text style={styles.recipeMeta}>
+                      {recipe.calories} kcal •{' '}
+                      {recipe.prepMinutes != null && recipe.prepMinutes > 0
+                        ? Math.round(recipe.prepMinutes)
+                        : 15}{' '}
+                      min
+                    </Text>
                   </View>
                 </View>
                 <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
