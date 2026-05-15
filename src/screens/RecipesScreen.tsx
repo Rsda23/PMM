@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { RecipesStackParamList } from '../navigation/RecipesStack';
 import type { RootTabParamList } from '../components/Navbar';
 import {
+  fetchRecipesUpTo,
   getRecipesPage,
   getRecipesTotalCount,
   RECIPES_PAGE_SIZE,
@@ -37,24 +38,8 @@ const iconFire = require('../../assets/figma/recette/icon-fire.png');
 
 type RecipesNavProp = NativeStackNavigationProp<RecipesStackParamList, 'Recipes'>;
 
-type FilterKey =
-  | 'all'
-  | 'recommendation'
-  | 'favoris'
-  | 'perte_poids'
-  | 'prise_masse'
-  | 'equilibre'
-  | 'vegetarien';
+type FilterKey = 'all' | 'favoris' | string;
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all', label: 'Tous' },
-  { key: 'recommendation', label: 'Recommandations' },
-  { key: 'favoris', label: 'Favoris' },
-  { key: 'perte_poids', label: 'Perte de poids' },
-  { key: 'prise_masse', label: 'Prise de masse' },
-  { key: 'equilibre', label: 'Équilibré' },
-  { key: 'vegetarien', label: 'Végétarien' },
-];
 const TAG_LABELS: Record<string, string> = {
   perte_poids: 'Perte de poids',
   prise_masse: 'Prise de masse',
@@ -66,7 +51,17 @@ const TAG_LABELS: Record<string, string> = {
   faible_carb: 'Faible carb',
   petit_dej: 'Petit-déj',
   energie: 'Énergie',
+  midi: 'Midi',
+  soir: 'Soir',
+  matin: 'Matin',
+  dejeuner: 'Déjeuner',
+  dinner: 'Dîner',
+  lunch: 'Déjeuner',
+  breakfast: 'Petit-déjeuner',
+  snack: 'Collation',
 };
+
+const formatTagLabel = (tag: string) => TAG_LABELS[tag] ?? tag.replace(/_/g, ' ');
 
 const RecipesScreen = () => {
   const navigation = useNavigation<RecipesNavProp>();
@@ -79,6 +74,7 @@ const RecipesScreen = () => {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreLockRef = useRef(false);
+  const hasUserScrolledRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [showPublicRecipes, setShowPublicRecipes] = useState(true);
@@ -88,9 +84,7 @@ const RecipesScreen = () => {
   );
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [totalRecipeCount, setTotalRecipeCount] = useState<number | null>(null);
-  const skipToggleCountEffectRef = useRef(true);
 
-  const objective = useUserStore((state) => state.objective);
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const toggleFavorite = useUserStore((state) => state.toggleFavorite);
   const pruneFavorites = useUserStore((state) => state.pruneFavorites);
@@ -101,13 +95,15 @@ const RecipesScreen = () => {
   }, [showPublicRecipes]);
 
   const loadFirstPage = useCallback(async () => {
+    const onlyMine = !showPublicRecipes;
+    hasUserScrolledRef.current = false;
     setLoadingInitial(true);
     setRecipes([]);
     setLastCursor(null);
     setHasMoreRecipes(true);
     try {
       const [page, profile] = await Promise.all([
-        getRecipesPage(RECIPES_PAGE_SIZE, null),
+        fetchRecipesUpTo(RECIPES_PAGE_SIZE, null, onlyMine),
         getUserProfile(),
       ]);
       setRecipes(page.recipes);
@@ -123,18 +119,7 @@ const RecipesScreen = () => {
     } finally {
       setLoadingInitial(false);
     }
-  }, [pruneFavorites, refreshTotalCount]);
-
-  useEffect(() => {
-    if (skipToggleCountEffectRef.current) {
-      skipToggleCountEffectRef.current = false;
-      return;
-    }
-    void (async () => {
-      const n = await getRecipesTotalCount(!showPublicRecipes);
-      setTotalRecipeCount(n);
-    })();
-  }, [showPublicRecipes]);
+  }, [pruneFavorites, refreshTotalCount, showPublicRecipes]);
 
   const loadMoreRecipes = useCallback(async () => {
     if (!hasMoreRecipes || loadMoreLockRef.current || loadingInitial || loadingMore) return;
@@ -143,7 +128,7 @@ const RecipesScreen = () => {
     loadMoreLockRef.current = true;
     setLoadingMore(true);
     try {
-      const page = await getRecipesPage(RECIPES_PAGE_SIZE, lastCursor);
+      const page = await getRecipesPage(RECIPES_PAGE_SIZE, lastCursor, !showPublicRecipes);
       setRecipes((prev) => {
         const merged = [...prev, ...page.recipes];
         pruneFavorites(merged.map((r) => r.id));
@@ -155,7 +140,7 @@ const RecipesScreen = () => {
       loadMoreLockRef.current = false;
       setLoadingMore(false);
     }
-  }, [hasMoreRecipes, lastCursor, loadingInitial, loadingMore, pruneFavorites]);
+  }, [hasMoreRecipes, lastCursor, loadingInitial, loadingMore, pruneFavorites, showPublicRecipes]);
 
   useFocusEffect(
     useCallback(() => {
@@ -174,13 +159,7 @@ const RecipesScreen = () => {
     if (!raw) return '?';
     return (raw.includes('@') ? raw.split('@')[0] : raw).charAt(0).toUpperCase();
   }, [auth.currentUser?.displayName, auth.currentUser?.email]);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(
-    auth.currentUser?.uid ?? null,
-  );
-
-  useEffect(() => {
-    setCurrentUserId(auth.currentUser?.uid ?? null);
-  }, [recipes]);
+  const currentUserId = auth.currentUser?.uid ?? null;
 
   const visibilityFiltered = useMemo(() => {
     if (showPublicRecipes) return recipes;
@@ -189,6 +168,38 @@ const RecipesScreen = () => {
       (recipe) => recipe.createdBy != null && recipe.createdBy === currentUserId,
     );
   }, [recipes, showPublicRecipes, currentUserId]);
+
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const recipe of visibilityFiltered) {
+      for (const tag of recipe.tags ?? []) {
+        const trimmed = tag.trim();
+        if (trimmed) tagSet.add(trimmed);
+      }
+    }
+    return Array.from(tagSet).sort((a, b) =>
+      formatTagLabel(a).localeCompare(formatTagLabel(b), 'fr'),
+    );
+  }, [visibilityFiltered]);
+
+  const filters = useMemo(
+    () => [
+      { key: 'all' as const, label: 'Tous' },
+      { key: 'favoris' as const, label: 'Favoris' },
+      ...availableTags.map((tag) => ({ key: tag, label: formatTagLabel(tag) })),
+    ],
+    [availableTags],
+  );
+
+  useEffect(() => {
+    if (
+      activeFilter !== 'all' &&
+      activeFilter !== 'favoris' &&
+      !availableTags.includes(activeFilter)
+    ) {
+      setActiveFilter('all');
+    }
+  }, [activeFilter, availableTags]);
 
   const searchFiltered = useMemo(() => {
     if (!searchQuery.trim()) return visibilityFiltered;
@@ -201,31 +212,14 @@ const RecipesScreen = () => {
   }, [visibilityFiltered, searchQuery]);
 
   const displayedRecipes = useMemo(() => {
-    switch (activeFilter) {
-      case 'recommendation':
-        return searchFiltered.filter((r) => r.tags.includes(objective));
-      case 'favoris':
-        return searchFiltered.filter((r) => favoriteRecipeIds.includes(r.id));
-      case 'perte_poids':
-      case 'prise_masse':
-      case 'equilibre':
-      case 'vegetarien':
-        return searchFiltered.filter((r) => r.tags.includes(activeFilter));
-      default:
-        return searchFiltered;
+    if (activeFilter === 'favoris') {
+      return searchFiltered.filter((r) => favoriteRecipeIds.includes(r.id));
     }
-  }, [searchFiltered, activeFilter, objective, favoriteRecipeIds]);
-
-  const featuredRecipe = useMemo<Recipe | null>(() => {
-    if (activeFilter !== 'all' || searchQuery.trim()) return null;
-    const recommended = visibilityFiltered.filter((r) => r.tags.includes(objective) && r.image);
-    return recommended[0] ?? visibilityFiltered.find((r) => !!r.image) ?? visibilityFiltered[0] ?? null;
-  }, [visibilityFiltered, objective, activeFilter, searchQuery]);
-
-  const listRecipes = useMemo(() => {
-    if (!featuredRecipe) return displayedRecipes;
-    return displayedRecipes.filter((r) => r.id !== featuredRecipe.id);
-  }, [displayedRecipes, featuredRecipe]);
+    if (activeFilter !== 'all') {
+      return searchFiltered.filter((r) => r.tags.includes(activeFilter));
+    }
+    return searchFiltered;
+  }, [searchFiltered, activeFilter, favoriteRecipeIds]);
 
   const navigateToProfile = () => {
     const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
@@ -235,6 +229,9 @@ const RecipesScreen = () => {
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetY = event.nativeEvent.contentOffset.y;
+      if (offsetY > 48) {
+        hasUserScrolledRef.current = true;
+      }
       setShowScrollTop((prev) => {
         if (offsetY > 320 && !prev) return true;
         if (offsetY <= 320 && prev) return false;
@@ -245,18 +242,20 @@ const RecipesScreen = () => {
       const paddingToBottom = 420;
       const nearBottom =
         layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-      if (nearBottom && hasMoreRecipes && !loadingInitial && !loadingMore) {
+      if (
+        hasUserScrolledRef.current &&
+        nearBottom &&
+        hasMoreRecipes &&
+        !loadingInitial &&
+        !loadingMore
+      ) {
         void loadMoreRecipes();
       }
     },
     [hasMoreRecipes, loadingInitial, loadingMore, loadMoreRecipes],
   );
 
-  const showHero = !!featuredRecipe && activeFilter === 'all' && !searchQuery.trim();
-  const heroRecipes = useMemo(
-    () => (showHero && featuredRecipe ? [featuredRecipe, ...listRecipes] : displayedRecipes),
-    [showHero, featuredRecipe, listRecipes, displayedRecipes],
-  );
+  const heroRecipes = displayedRecipes;
   const sectionLabel = useMemo(() => {
     const n = totalRecipeCount;
     if (n !== null) {
@@ -274,13 +273,12 @@ const RecipesScreen = () => {
 
       const preferredTag =
         activeFilter !== 'all' &&
-        activeFilter !== 'recommendation' &&
         activeFilter !== 'favoris' &&
         tags.includes(activeFilter)
           ? activeFilter
           : tags.find((tag) => TAG_LABELS[tag]) ?? tags[0];
 
-      return TAG_LABELS[preferredTag] ?? preferredTag.replace(/_/g, ' ');
+      return formatTagLabel(preferredTag);
     },
     [activeFilter],
   );
@@ -339,7 +337,7 @@ const RecipesScreen = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersRow}
         >
-          {FILTERS.map((f) => {
+          {filters.map((f) => {
             const active = activeFilter === f.key;
             return (
               <TouchableOpacity

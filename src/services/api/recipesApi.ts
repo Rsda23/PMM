@@ -135,27 +135,26 @@ const mapFirestoreRecipeToRecipe = (id: string, docData: RecipeDocument, uid: st
   ingredients: Array.isArray(docData.ingredients) ? docData.ingredients : [],
   ingredientsDetailed: Array.isArray(docData.ingredientsDetailed)
     ? docData.ingredientsDetailed
-        .map((item) => {
+        .map((item): IngredientItem | null => {
           if (!item || typeof item !== 'object') return null;
           const name = typeof item.name === 'string' ? item.name.trim() : '';
           if (!name) return null;
-          const ingredientId =
-            typeof item.ingredientId === 'string' && item.ingredientId.trim()
-              ? item.ingredientId.trim()
-              : undefined;
-          const amountValue =
-            typeof item.amountValue === 'number' && Number.isFinite(item.amountValue)
-              ? item.amountValue
-              : undefined;
-          return {
-            name,
-            amount: typeof item.amount === 'string' ? item.amount : undefined,
-            unit: typeof item.unit === 'string' ? item.unit : undefined,
-            ingredientId,
-            amountValue,
-          };
+          const mapped: IngredientItem = { name };
+          if (typeof item.amount === 'string' && item.amount.trim()) {
+            mapped.amount = item.amount.trim();
+          }
+          if (typeof item.unit === 'string' && item.unit.trim()) {
+            mapped.unit = item.unit.trim();
+          }
+          if (typeof item.ingredientId === 'string' && item.ingredientId.trim()) {
+            mapped.ingredientId = item.ingredientId.trim();
+          }
+          if (typeof item.amountValue === 'number' && Number.isFinite(item.amountValue)) {
+            mapped.amountValue = item.amountValue;
+          }
+          return mapped;
         })
-        .filter((item): item is IngredientItem => !!item)
+        .filter((item): item is IngredientItem => item !== null)
     : undefined,
   instructions: Array.isArray(docData.instructions)
     ? docData.instructions
@@ -230,7 +229,8 @@ export type RecipesPageResult = {
  */
 export async function getRecipesPage(
   pageSize: number,
-  afterCursor: RecipesPageCursor
+  afterCursor: RecipesPageCursor,
+  onlyMine = false,
 ): Promise<RecipesPageResult> {
   const uid = auth.currentUser?.uid;
   if (!uid) {
@@ -240,9 +240,10 @@ export async function getRecipesPage(
   const col = collection(db, 'recipes');
   const ordered = orderBy(documentId());
   const pageLimit = limit(pageSize + 1);
+  const baseConstraints = onlyMine ? [where('createdBy', '==', uid), ordered] : [ordered];
   const q = afterCursor
-    ? query(col, ordered, startAfter(afterCursor), pageLimit)
-    : query(col, ordered, pageLimit);
+    ? query(col, ...baseConstraints, startAfter(afterCursor), pageLimit)
+    : query(col, ...baseConstraints, pageLimit);
 
   try {
     const snapshot = await getDocs(q);
@@ -265,6 +266,29 @@ export async function getRecipesPage(
     console.warn('getRecipesPage failed:', e);
     return { recipes: [], cursor: null, hasMore: false };
   }
+}
+
+/** Charge assez de pages pour atteindre au moins `targetCount` recettes (si disponibles). */
+export async function fetchRecipesUpTo(
+  targetCount: number,
+  startCursor: RecipesPageCursor,
+  onlyMine: boolean,
+): Promise<RecipesPageResult> {
+  let recipes: Recipe[] = [];
+  let cursor = startCursor;
+  let hasMore = true;
+
+  while (recipes.length < targetCount && hasMore) {
+    const page = await getRecipesPage(RECIPES_PAGE_SIZE, cursor, onlyMine);
+    if (page.recipes.length === 0) {
+      return { recipes, cursor, hasMore: false };
+    }
+    recipes = [...recipes, ...page.recipes];
+    cursor = page.cursor;
+    hasMore = page.hasMore;
+  }
+
+  return { recipes, cursor, hasMore };
 }
 
 export const getAllRecipes = async (): Promise<Recipe[]> => {
@@ -306,13 +330,30 @@ export const createRecipe = async (recipe: Omit<Recipe, 'id'>) => {
     throw new Error('Tu dois être connecté pour créer une recette.');
   }
 
-  const { image, instructions, prepMinutes, ingredientsDetailed, ...required } = recipe;
+  const {
+    image,
+    instructions,
+    prepMinutes,
+    ingredientsDetailed,
+    protein,
+    carbs,
+    fats,
+    difficulty,
+    rating,
+    ...required
+  } = recipe;
 
   const payload: Record<string, unknown> = {
     ...required,
     createdAt: serverTimestamp(),
     createdBy: userId,
   };
+
+  if (typeof protein === 'number' && Number.isFinite(protein)) payload.protein = protein;
+  if (typeof carbs === 'number' && Number.isFinite(carbs)) payload.carbs = carbs;
+  if (typeof fats === 'number' && Number.isFinite(fats)) payload.fats = fats;
+  if (typeof difficulty === 'string' && difficulty.trim()) payload.difficulty = difficulty.trim();
+  if (typeof rating === 'number' && Number.isFinite(rating)) payload.rating = rating;
 
   if (ingredientsDetailed && ingredientsDetailed.length > 0) {
     payload.ingredientsDetailed = sanitizeIngredientsDetailedForWrite(ingredientsDetailed);
