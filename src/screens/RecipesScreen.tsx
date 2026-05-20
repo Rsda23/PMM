@@ -20,8 +20,8 @@ import type { RecipesStackParamList } from '../navigation/RecipesStack';
 import type { RootTabParamList } from '../components/Navbar';
 import {
   fetchRecipesUpTo,
+  getRecipesDisplayCount,
   getRecipesPage,
-  getRecipesTotalCount,
   RECIPES_PAGE_SIZE,
   type Recipe,
   type RecipesPageCursor,
@@ -87,21 +87,31 @@ const RecipesScreen = () => {
     auth.currentUser?.photoURL ?? null,
   );
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [totalRecipeCount, setTotalRecipeCount] = useState<number | null>(null);
+  const [filteredTotalCount, setFilteredTotalCount] = useState<number | null>(null);
 
   const favoriteRecipeIds = useUserStore((state) => state.favoriteRecipeIds);
   const toggleFavorite = useUserStore((state) => state.toggleFavorite);
   const pruneFavorites = useUserStore((state) => state.pruneFavorites);
 
-  const refreshTotalCount = useCallback(async () => {
-    const n = await getRecipesTotalCount(!showPublicRecipes);
-    setTotalRecipeCount(n);
+  const activeFilterRef = useRef(activeFilter);
+  activeFilterRef.current = activeFilter;
+  const favoriteRecipeIdsRef = useRef(favoriteRecipeIds);
+  favoriteRecipeIdsRef.current = favoriteRecipeIds;
+
+  const refreshFilteredTotalCount = useCallback(async () => {
+    const n = await getRecipesDisplayCount({
+      onlyMine: !showPublicRecipes,
+      activeFilter: activeFilterRef.current,
+      favoriteRecipeIds: favoriteRecipeIdsRef.current,
+    });
+    setFilteredTotalCount(n);
   }, [showPublicRecipes]);
 
   const loadFirstPage = useCallback(async () => {
     const onlyMine = !showPublicRecipes;
     hasUserScrolledRef.current = false;
     setLoadingInitial(true);
+    setFilteredTotalCount(null);
     setRecipes([]);
     setLastCursor(null);
     setHasMoreRecipes(true);
@@ -119,7 +129,7 @@ const RecipesScreen = () => {
       setLastCursor(page.cursor);
       setHasMoreRecipes(page.hasMore);
       pruneFavorites(page.recipes.map((recipe) => recipe.id));
-      await refreshTotalCount();
+      await refreshFilteredTotalCount();
       if (profile?.avatarUrl) {
         setAvatarUrl(profile.avatarUrl);
       } else if (auth.currentUser?.photoURL) {
@@ -128,7 +138,7 @@ const RecipesScreen = () => {
     } finally {
       setLoadingInitial(false);
     }
-  }, [pruneFavorites, refreshTotalCount, showPublicRecipes]);
+  }, [pruneFavorites, refreshFilteredTotalCount, showPublicRecipes]);
 
   const loadMoreRecipes = useCallback(async () => {
     if (!hasMoreRecipes || loadMoreLockRef.current || loadingInitial || loadingMore) return;
@@ -158,9 +168,14 @@ const RecipesScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      loadFirstPage();
+      void loadFirstPage();
     }, [loadFirstPage]),
   );
+
+  useEffect(() => {
+    if (loadingInitial) return;
+    void refreshFilteredTotalCount();
+  }, [activeFilter, favoriteRecipeIds, loadingInitial, refreshFilteredTotalCount]);
 
   useEffect(() => {
     if (!route.params?.reTapToken) return;
@@ -206,6 +221,7 @@ const RecipesScreen = () => {
   );
 
   useEffect(() => {
+    if (loadingInitial) return;
     if (
       activeFilter !== 'all' &&
       activeFilter !== 'favoris' &&
@@ -213,7 +229,7 @@ const RecipesScreen = () => {
     ) {
       setActiveFilter('all');
     }
-  }, [activeFilter, availableTags]);
+  }, [activeFilter, availableTags, loadingInitial]);
 
   const searchFiltered = useMemo(() => {
     if (!searchQuery.trim()) return visibilityFiltered;
@@ -271,13 +287,12 @@ const RecipesScreen = () => {
 
   const heroRecipes = displayedRecipes;
   const sectionLabel = useMemo(() => {
-    const n = totalRecipeCount;
-    if (n !== null) {
-      return `${n} recette${n !== 1 ? 's' : ''}`;
-    }
-    const fallback = heroRecipes.length;
-    return `${fallback} recette${fallback !== 1 ? 's' : ''}`;
-  }, [totalRecipeCount, heroRecipes.length]);
+    const hasSearch = searchQuery.trim().length > 0;
+    const n = hasSearch
+      ? displayedRecipes.length
+      : (filteredTotalCount ?? displayedRecipes.length);
+    return `${n} recette${n !== 1 ? 's' : ''}`;
+  }, [searchQuery, filteredTotalCount, displayedRecipes.length]);
   const getRecipeBadgeLabel = useCallback(
     (recipe: Recipe) => {
       if (recipe.difficulty?.trim()) return recipe.difficulty.trim();

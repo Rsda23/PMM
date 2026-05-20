@@ -215,6 +215,109 @@ export async function getRecipesTotalCount(onlyMine: boolean): Promise<number> {
   }
 }
 
+const PUBLIC_RECIPE_TAGS = new Set([
+  'perte_poids',
+  'prise_masse',
+  'equilibre',
+  'vegetarien',
+  'riche_proteine',
+]);
+
+const persistedTagQueryValues = (tag: string, uid: string, onlyMine: boolean): string[] => {
+  if (!onlyMine || PUBLIC_RECIPE_TAGS.has(tag)) return [tag];
+  const privateTag = `${PRIVATE_TAG_PREFIX}${uid}:${tag}`;
+  return privateTag === tag ? [tag] : [tag, privateTag];
+};
+
+const countFavoriteRecipes = async (
+  onlyMine: boolean,
+  favoriteRecipeIds: string[],
+  uid: string,
+): Promise<number> => {
+  if (favoriteRecipeIds.length === 0) return 0;
+  const col = collection(db, 'recipes');
+  const IN_LIMIT = 30;
+  let total = 0;
+
+  for (let i = 0; i < favoriteRecipeIds.length; i += IN_LIMIT) {
+    const chunk = favoriteRecipeIds.slice(i, i + IN_LIMIT);
+    const q = onlyMine
+      ? query(col, where('createdBy', '==', uid), where(documentId(), 'in', chunk))
+      : query(col, where(documentId(), 'in', chunk));
+    try {
+      const snapshot = await getCountFromServer(q);
+      total += snapshot.data().count;
+    } catch (e) {
+      console.warn('countFavoriteRecipes batch failed:', e);
+    }
+  }
+
+  return total;
+};
+
+const countRecipesWithTag = async (
+  tag: string,
+  onlyMine: boolean,
+  uid: string,
+): Promise<number> => {
+  const col = collection(db, 'recipes');
+  const tagValues = persistedTagQueryValues(tag, uid, onlyMine);
+
+  try {
+    if (onlyMine) {
+      if (tagValues.length === 1) {
+        const snapshot = await getCountFromServer(
+          query(
+            col,
+            where('createdBy', '==', uid),
+            where('tags', 'array-contains', tagValues[0]),
+          ),
+        );
+        return snapshot.data().count;
+      }
+      const snapshot = await getCountFromServer(
+        query(
+          col,
+          where('createdBy', '==', uid),
+          where('tags', 'array-contains-any', tagValues),
+        ),
+      );
+      return snapshot.data().count;
+    }
+
+    const snapshot = await getCountFromServer(
+      query(col, where('tags', 'array-contains', tag)),
+    );
+    return snapshot.data().count;
+  } catch (e) {
+    console.warn('countRecipesWithTag failed:', e);
+    return 0;
+  }
+};
+
+/**
+ * Nombre total affiché pour le toggle + filtre actifs (sans pagination).
+ * La recherche texte reste calculée côté client sur les recettes chargées.
+ */
+export async function getRecipesDisplayCount(params: {
+  onlyMine: boolean;
+  activeFilter: 'all' | 'favoris' | string;
+  favoriteRecipeIds: string[];
+}): Promise<number> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return 0;
+
+  const { onlyMine, activeFilter, favoriteRecipeIds } = params;
+
+  if (activeFilter === 'all') {
+    return getRecipesTotalCount(onlyMine);
+  }
+  if (activeFilter === 'favoris') {
+    return countFavoriteRecipes(onlyMine, favoriteRecipeIds, uid);
+  }
+  return countRecipesWithTag(activeFilter, onlyMine, uid);
+}
+
 export type RecipesPageCursor = QueryDocumentSnapshot<DocumentData> | null;
 
 export type RecipesPageResult = {
