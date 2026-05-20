@@ -58,6 +58,28 @@ const sanitizeIngredientsDetailedForWrite = (items: IngredientItem[]): Record<st
     })
     .filter((v): v is Record<string, unknown> => !!v);
 
+/** Vrai si la recette correspond au tag affiché (public ou privé perso en catalogue inclus). */
+export const recipeMatchesTag = (
+  recipe: Recipe,
+  tag: string,
+  uid?: string | null,
+): boolean => {
+  const tags = recipe.tags ?? [];
+  if (tags.includes(tag)) return true;
+  if (!uid || recipe.createdBy !== uid) return false;
+  return tags.includes(`${PRIVATE_TAG_PREFIX}${uid}:${tag}`);
+};
+
+export const mergeRecipesById = (...lists: Recipe[][]): Recipe[] => {
+  const map = new Map<string, Recipe>();
+  for (const list of lists) {
+    for (const recipe of list) {
+      map.set(recipe.id, recipe);
+    }
+  }
+  return Array.from(map.values());
+};
+
 const mapTagsForCurrentUser = (tags: string[], currentUid?: string): string[] => {
   return tags.flatMap((tag) => {
     if (!tag.startsWith(PRIVATE_TAG_PREFIX)) return [tag];
@@ -285,10 +307,28 @@ const countRecipesWithTag = async (
       return snapshot.data().count;
     }
 
-    const snapshot = await getCountFromServer(
-      query(col, where('tags', 'array-contains', tag)),
-    );
-    return snapshot.data().count;
+    const userTagValues = persistedTagQueryValues(tag, uid, true);
+    const [publicSnap, userSnap, userPublicSnap] = await Promise.all([
+      getCountFromServer(query(col, where('tags', 'array-contains', tag))),
+      getCountFromServer(
+        query(
+          col,
+          where('createdBy', '==', uid),
+          where(
+            'tags',
+            'array-contains-any',
+            userTagValues.length === 1 ? [userTagValues[0]] : userTagValues,
+          ),
+        ),
+      ),
+      getCountFromServer(
+        query(col, where('createdBy', '==', uid), where('tags', 'array-contains', tag)),
+      ),
+    ]);
+    const publicCount = publicSnap.data().count;
+    const userScopeCount = userSnap.data().count;
+    const userInPublicCount = userPublicSnap.data().count;
+    return publicCount + userScopeCount - userInPublicCount;
   } catch (e) {
     console.warn('countRecipesWithTag failed:', e);
     return 0;

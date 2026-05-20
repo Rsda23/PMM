@@ -22,6 +22,8 @@ import {
   fetchRecipesUpTo,
   getRecipesDisplayCount,
   getRecipesPage,
+  mergeRecipesById,
+  recipeMatchesTag,
   RECIPES_PAGE_SIZE,
   type Recipe,
   type RecipesPageCursor,
@@ -117,12 +119,16 @@ const RecipesScreen = () => {
     setHasMoreRecipes(true);
     try {
       const [page, profile] = await Promise.all([
-        fetchRecipesUpTo(
-          onlyMine ? MINE_INITIAL_FETCH_TARGET : RECIPES_PAGE_SIZE,
-          null,
-          onlyMine,
-          onlyMine ? MINE_PAGE_SIZE : RECIPES_PAGE_SIZE,
-        ),
+        onlyMine
+          ? fetchRecipesUpTo(MINE_INITIAL_FETCH_TARGET, null, true, MINE_PAGE_SIZE)
+          : Promise.all([
+              fetchRecipesUpTo(RECIPES_PAGE_SIZE, null, false, RECIPES_PAGE_SIZE),
+              fetchRecipesUpTo(MINE_INITIAL_FETCH_TARGET, null, true, MINE_PAGE_SIZE),
+            ]).then(([cataloguePage, minePage]) => ({
+              recipes: mergeRecipesById(minePage.recipes, cataloguePage.recipes),
+              cursor: cataloguePage.cursor,
+              hasMore: cataloguePage.hasMore,
+            })),
         getUserProfile(),
       ]);
       setRecipes(page.recipes);
@@ -246,10 +252,12 @@ const RecipesScreen = () => {
       return searchFiltered.filter((r) => favoriteRecipeIds.includes(r.id));
     }
     if (activeFilter !== 'all') {
-      return searchFiltered.filter((r) => r.tags.includes(activeFilter));
+      return searchFiltered.filter((r) =>
+        recipeMatchesTag(r, activeFilter, currentUserId),
+      );
     }
     return searchFiltered;
-  }, [searchFiltered, activeFilter, favoriteRecipeIds]);
+  }, [searchFiltered, activeFilter, favoriteRecipeIds, currentUserId]);
 
   const navigateToProfile = () => {
     const parent = navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
