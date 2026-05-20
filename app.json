@@ -2,6 +2,8 @@
   "expo": {
     "name": "PMM",
     "slug": "PMM",
+    "owner": "rsda",
+    "scheme": "pmm",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -28,7 +30,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

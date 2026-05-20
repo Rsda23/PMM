@@ -14,9 +14,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppButton from "../components/ui/AppButton";
 import AppDivider from "../components/ui/AppDivider";
 import AppInput from "../components/ui/AppInput";
+import GoogleSignInBridge from "../components/GoogleSignInBridge";
 import GoogleButton from "../components/ui/GoogleButton";
 import type { AuthStackParamList } from "../navigation/AuthStack";
-import { login } from "../services/firebase/auth";
+import {
+  getGoogleClientConfigError,
+  getGoogleSignInSetupHelp,
+  isGoogleSignInConfigured,
+  isGoogleSignInNativeAvailable,
+} from "../hooks/useGoogleSignIn";
+import { getAuthErrorMessage, login } from "../services/firebase/auth";
 import { Image } from "react-native";
 
 const heroLockIcon = require("../../assets/figma/login/hero-lock-bg.png");
@@ -30,6 +37,10 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleConfigured = isGoogleSignInConfigured();
+  const googleNativeAvailable = isGoogleSignInNativeAvailable();
+  const busy = loading || googleLoading;
   const canSubmit = useMemo(() => email.trim().length > 0 && password.length > 0, [email, password]);
 
   const handleLogin = async () => {
@@ -42,11 +53,19 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       await login(email.trim(), password);
       // onAuthStateChanged dans App.tsx met à jour l'état → affiche Navbar
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Connexion impossible";
-      Alert.alert("Erreur", message);
+      Alert.alert("Erreur", getAuthErrorMessage(e));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleConfigPress = () => {
+    const msg =
+      getGoogleClientConfigError() ??
+      (!googleNativeAvailable
+        ? getGoogleSignInSetupHelp()
+        : "Configuration Google incomplète.");
+    Alert.alert("Connexion Google", msg);
   };
 
   return (
@@ -83,7 +102,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
                   placeholder="nom@exemple.com"
                   iconName="mail-outline"
                   iconSource={iconEmail}
-                  editable={!loading}
+                  editable={!busy}
                   inputProps={{
                     keyboardType: "email-address",
                     textContentType: "emailAddress",
@@ -99,14 +118,14 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
                     iconName="key-outline"
                     iconSource={iconPassword}
                     secureTextEntry
-                    editable={!loading}
+                    editable={!busy}
                     inputProps={{ textContentType: "password" }}
                   />
 
                   <TouchableOpacity
                     style={styles.forgot}
                     onPress={() => navigation.navigate("ForgotPassword")}
-                    disabled={loading}
+                    disabled={busy}
                   >
                     <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
                   </TouchableOpacity>
@@ -116,7 +135,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
                   title="Se connecter"
                   onPress={handleLogin}
                   disabled={!canSubmit}
-                  loading={loading}
+                  loading={loading && !googleLoading}
                   rightIcon="arrow-forward"
                   rightIconSource={iconArrowRight}
                 />
@@ -124,16 +143,24 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
               <AppDivider />
 
-              <GoogleButton
-                onPress={() => Alert.alert("Info", "Connexion Google a brancher.")}
-                disabled={loading}
-              />
+              {googleConfigured && googleNativeAvailable ? (
+                <GoogleSignInBridge
+                  disabled={loading}
+                  onLoadingChange={setGoogleLoading}
+                  onError={(message) => Alert.alert("Erreur", message)}
+                />
+              ) : (
+                <GoogleButton
+                  onPress={handleGoogleConfigPress}
+                  disabled={busy}
+                />
+              )}
 
               <View style={styles.signupRow}>
                 <Text style={styles.signupText}>Pas de compte ? </Text>
                 <TouchableOpacity
                   onPress={() => navigation.navigate("Register")}
-                  disabled={loading}
+                  disabled={busy}
                 >
                   <Text style={styles.signupLink}>S&apos;inscrire</Text>
                 </TouchableOpacity>

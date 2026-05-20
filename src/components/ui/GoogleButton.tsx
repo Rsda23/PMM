@@ -5,17 +5,23 @@ import AppButton from "./AppButton";
 type GoogleButtonProps = {
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
 };
 
 const googleLogo = require("../../../assets/figma/login/google-logo.png");
 
-export default function GoogleButton({ onPress, disabled = false }: GoogleButtonProps) {
+export default function GoogleButton({
+  onPress,
+  disabled = false,
+  loading = false,
+}: GoogleButtonProps) {
   return (
     <View style={styles.wrap}>
       <AppButton
         title="Continuer avec Google"
         onPress={onPress}
         disabled={disabled}
+        loading={loading}
         variant="secondary"
       />
       <Image source={googleLogo} style={styles.logo} resizeMode="contain" />
