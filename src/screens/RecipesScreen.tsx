@@ -30,6 +30,10 @@ import { useUserStore } from '../store/userStore';
 import { auth } from '../services/firebase/firebaseConfig';
 import { getUserProfile } from '../services/api/userProfileApi';
 
+/** En « mes créations », le premier chargement ne doit pas s’arrêter à 4 docs : les filtres (tags) sont dérivés des recettes chargées ; sinon des tags absents des premiers ids n’apparaissent pas. */
+const MINE_INITIAL_FETCH_TARGET = 200;
+const MINE_PAGE_SIZE = 40;
+
 const iconSearch = require('../../assets/figma/navbar/tab-search.png');
 const iconPlus = require('../../assets/figma/recette/plus.png');
 const iconStarWhite = require('../../assets/figma/recette/star-white.png');
@@ -103,7 +107,12 @@ const RecipesScreen = () => {
     setHasMoreRecipes(true);
     try {
       const [page, profile] = await Promise.all([
-        fetchRecipesUpTo(RECIPES_PAGE_SIZE, null, onlyMine),
+        fetchRecipesUpTo(
+          onlyMine ? MINE_INITIAL_FETCH_TARGET : RECIPES_PAGE_SIZE,
+          null,
+          onlyMine,
+          onlyMine ? MINE_PAGE_SIZE : RECIPES_PAGE_SIZE,
+        ),
         getUserProfile(),
       ]);
       setRecipes(page.recipes);
@@ -128,7 +137,12 @@ const RecipesScreen = () => {
     loadMoreLockRef.current = true;
     setLoadingMore(true);
     try {
-      const page = await getRecipesPage(RECIPES_PAGE_SIZE, lastCursor, !showPublicRecipes);
+      const onlyMine = !showPublicRecipes;
+      const page = await getRecipesPage(
+        onlyMine ? MINE_PAGE_SIZE : RECIPES_PAGE_SIZE,
+        lastCursor,
+        onlyMine,
+      );
       setRecipes((prev) => {
         const merged = [...prev, ...page.recipes];
         pruneFavorites(merged.map((r) => r.id));

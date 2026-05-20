@@ -273,13 +273,14 @@ export async function fetchRecipesUpTo(
   targetCount: number,
   startCursor: RecipesPageCursor,
   onlyMine: boolean,
+  pageSize: number = RECIPES_PAGE_SIZE,
 ): Promise<RecipesPageResult> {
   let recipes: Recipe[] = [];
   let cursor = startCursor;
   let hasMore = true;
 
   while (recipes.length < targetCount && hasMore) {
-    const page = await getRecipesPage(RECIPES_PAGE_SIZE, cursor, onlyMine);
+    const page = await getRecipesPage(pageSize, cursor, onlyMine);
     if (page.recipes.length === 0) {
       return { recipes, cursor, hasMore: false };
     }
