@@ -9,6 +9,12 @@ dist/
 web-build/
 expo-env.d.ts
 
+# EAS / local builds (keep eas.json and app.json in git)
+*.apk
+*.aab
+credentials.json
+credentials/
+
 # Native
 .kotlin/
 *.orig.*

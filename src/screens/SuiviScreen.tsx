@@ -463,7 +463,7 @@ const SuiviScreen = () => {
                 enableSwipeMonths
                 markingType="multi-dot"
                 markedDates={markedDates as any}
-                onDayPress={(day) => setSelectedDate(day.dateString)}
+                onDayPress={(day) => setSelectedDate(day.dateString)} 
                 onMonthChange={(m) => setMonthCursor(new Date(m.year, m.month - 1, 1))}
                 theme={{
                   todayTextColor: '#004d99',
